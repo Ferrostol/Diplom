@@ -1,0 +1,7 @@
+venv/
+__pycache__/
+
+test.py
+information.db
+
+backend.*
