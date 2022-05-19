@@ -1,4 +1,5 @@
 import psycopg2
+from config import databaseConf
 
 class database(object):
 	def __init__(self):
@@ -6,7 +7,10 @@ class database(object):
 		self.getCursor()
 
 	def getConnect(self):
-		pass		
+		self.connect = psycopg2.connect(dbname=databaseConf['dbname'], 
+										user=databaseConf['user'], 
+										password=databaseConf['password'], 
+										host=databaseConf['host'])		
 		
 
 	def getCursor(self):
@@ -34,8 +38,10 @@ class database(object):
 			swww[el[0]] = {'community': el[1], 'proc': el[2], 'idleProc': el[3]}
 		return swww
 
-
-
+	def addProcStat(self, procStat):
+		sql = "insert into statcpu (switches_id,procent) values " + ','.join([f"({stat[0]},{stat[1]})" for stat in procStat]) + ';'
+		self.cursor.execute(sql)
+		self.connect.commit()
 
 
 
