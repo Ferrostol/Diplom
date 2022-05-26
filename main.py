@@ -20,58 +20,83 @@ except OperationalError as e:
 switches = [] # Инициализация массива в котором будет храниться информация о свичах
 mibsList = [] # Инициализация массива в котором будет храниться информация о oid для свичей
 procStat = [] # Инициализация массива в котором будет собрана статистика по работе процессора свичей
+tempStat = [] # Инициализация массива в котором будет собрана статистика по температуре датчиков свичей
 error = {}    # Инициализация Объекта в котором будет собраны ошибки по работе свичей
+oldError = {} # Инициализация Объекта в котором будут собраны ошибки за прошлые запросы к коммутаторам
 
 
-async def request(switch, typeMib, mib):
-    global snmpEngine,switches,procStat
+async def request(switch, mib):
+    global snmpEngine,switches,procStat,tempStat
     try:
-        snmp = async with aiosnmp.Snmp(host=switches[switch]['ip'], 
-                                port=switches[switch]['port'], 
-                                community=mib['community'], 
+        snmp = aiosnmp.Snmp(host=switches[switch]['ip'],
+                                port=switches[switch]['port'],
+                                community=mib['community'],
                                 timeout=4)
     except Exception as e:
         print('1')
         print(switches[switch]['ip'])
-        print(mib['proc'])
-        raise e 
+        raise e
     else:
-        if typeMib == 'CPU' and not mib['proc'] in (None,''):
+        if not mib['proc'] in (None,''):
             try:
                 for res in await snmp.bulk_walk(mib['proc']):
                     rezult = (100 - int(res.value)) if mib['idleProc'] else int(res.value)
-                    procStat.append([switch,rezult])
+                    procStat.append([switch, rezult])
                     if LIMIT.MAX_CPU_LOAD <= rezult:
                         if switch in error:
-                            error[switch].append({ typeEr=TYPE_ERROR.HOST_UNKNOWN, ip=switches[switch]['ip']})
-                        else
-                            error[switch] = [{ typeEr=TYPE_ERROR.HOST_UNKNOWN, ip=switches[switch]['ip']}]
+                            error[switch].append({ typeEr: TYPE_ERROR.CPU_LOAD, ip: switches[switch]['ip'], description: f"Загрузка процессора более {LIMIT.MAX_CPU_LOAD}%. = {rezult}%"})
+                        else:
+                            error[switch] = [{ typeEr: TYPE_ERROR.CPU_LOAD, ip: switches[switch]['ip'], description: f"Загрузка процессора более {LIMIT.MAX_CPU_LOAD}%. = {rezult}%"}]
             except Exception as e:
                 print('2')
+                print(switches[switch]['ip'])
+                print(mib['proc'])
+                raise e
+
+        if not mib['temp'] in (None,''):
+            try:
+                i = 0
+                for res in await snmp.bulk_walk(mib['temp']):
+                    rezult = int(res.value)
+                    tempStat.append([switch, i,rezult])
+                    if LIMIT.MAX_TEMPERATURE <= rezult:
+                        if switch in error:
+                            error[switch].append({ typeEr: TYPE_ERROR.TEMPERATURE, ip: switches[switch]['ip'], description: f"Температура датчика {i} более {LIMIT.MAX_TEMPERATURE}%. = {rezult} C"})
+                        else:
+                            error[switch] = [{ typeEr: TYPE_ERROR.TEMPERATURE, ip: switches[switch]['ip'], description: f"Температура датчика {i} более {LIMIT.MAX_TEMPERATURE}%. = {rezult} C"}]
+                    i = i + 1
+            except Exception as e:
+                print('2')
+                print(switches[switch]['ip'])
+                print(mib['temp'])
                 raise e
             
-            
 
-def cpuCheck(switch_list):
-    global mibsList,procStat
+
+def check(switch_list):
+    global mibsList,procStat,tempStat
     ioloop = asyncio.get_event_loop()
     tasks = []
     for switch in switch_list:
-        tasks.append(ioloop.create_task(request(switch, 'CPU', mibsList[switch])))
+        tasks.append(ioloop.create_task(request(switch, mibsList[switch])))
     wait_tasks = asyncio.wait(tasks)
     ioloop.run_until_complete(wait_tasks)
     huta.addProcStat(procStat)
-    #print(procStat)
+    huta.addTempStat(tempStat)
+    print(procStat)
+    print(tempStat)
     procStat = []
 
 
+
 def errorInsert(errorList):
+    massError = []
     for swt in errorList:
         pass
 
 
 def pingAll():
-    global switches, error
+    global switches, error,procStat,tempStat
     temp = []
     error = {}
     for switch in switches:
@@ -83,10 +108,10 @@ def pingAll():
             if rez == 0:
                 temp.append(switch)
             else:
-                error[switch] = { typeEr=TYPE_ERROR.HOST_UNKNOWN, ip=switches[switch]['ip']}
-                procStat.append([switch,'null'])
+                error[switch] = { typeEr: TYPE_ERROR.HOST_UNKNOWN, ip: switches[switch]['ip'], description: None}
+                procStat.append([switch, 'null'])
+                tempStat.append([switch, 0, 'null'])
     errorInsert(error)
-    print(error) # Отображаем на экране имеющиеся ошибки
     return temp
 
 
@@ -95,8 +120,8 @@ def main():
     switches = huta.getSwitches()
     mibsList = huta.getMibs()
     onSwitches = pingAll()
-    cpuCheck(onSwitches)
-    #print(onSwitches)
+    check(onSwitches)
+    print(error) # Отображаем на экране имеющиеся ошибки
 
 
 if __name__ == '__main__':

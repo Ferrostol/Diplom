@@ -30,16 +30,27 @@ class database(object):
 		return swww
 
 	def getMibs(self):
-		sql = "select switches_id, community, proc, idleProc from switches join mibsList on mibsList.switches_id=switches.id where status=true"
+		sql = "select switches_id, community, proc, idleProc, temp from switches join mibsList on mibsList.switches_id=switches.id where status=true"
 		self.cursor.execute(sql)
 		swww = {}
 		swt = self.cursor.fetchall()
 		for el in swt:
-			swww[el[0]] = {'community': el[1], 'proc': el[2], 'idleProc': el[3]}
+			swww[el[0]] = {'community': el[1], 'proc': el[2], 'idleProc': el[3], 'temp': el[4]}
 		return swww
 
 	def addProcStat(self, procStat):
 		sql = "insert into statcpu (switches_id,procent) values " + ','.join([f"({stat[0]},{stat[1]})" for stat in procStat]) + ';'
+		self.cursor.execute(sql)
+		self.connect.commit()
+
+	def addTempStat(self, tempStat):
+		sql = "insert into stattemp (switches_id,num_sensor, value) values " + ','.join([f"({stat[0]},{stat[1]},{stat[2]})" for stat in tempStat]) + ';'
+		self.cursor.execute(sql)
+		self.connect.commit()
+
+
+	def addNewError(self, device, error):
+		sql = f"insert into error (device_id, error) values({device}, '{error}')"
 		self.cursor.execute(sql)
 		self.connect.commit()
 
@@ -51,10 +62,6 @@ class database(object):
 
 
 
-# def addNewError(device, error):
-# 	cursor = getCursorConnect()
-# 	sql = f"insert into Errors (device_id, error) values({device}, '{error}')"
-# 	cursor.execute(sql)
 
 
 # def getDeviceError():
