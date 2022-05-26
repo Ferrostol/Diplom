@@ -1,14 +1,12 @@
-from enum import Enum, auto
+from enum import Enum
 
-class LIMIT():
-	MAX_CPU_LOAD = 50
-	MAX_TEMPERATURE = 50
+
+class LIMIT:
+    MAX_CPU_LOAD = 50
+    MAX_TEMPERATURE = 50
 
 
 class TYPE_ERROR(Enum):
-	HOST_UNKNOWN = 1
-	CPU_LOAD = 2
-	TEMPERATURE = 5
-
-
-
+    HOST_UNKNOWN = 1
+    CPU_LOAD = 2
+    TEMPERATURE = 5

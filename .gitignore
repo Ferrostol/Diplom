@@ -1,7 +1,8 @@
 venv/
 __pycache__/
+.vscode/
 
 test.py
-information.db
+pyproject.toml
 
 backend.*
