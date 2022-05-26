@@ -61,9 +61,9 @@ async def request(switch, mib):
                     tempStat.append([switch, i,rezult])
                     if LIMIT.MAX_TEMPERATURE <= rezult:
                         if switch in error:
-                            error[switch].append({ typeEr: TYPE_ERROR.TEMPERATURE, ip: switches[switch]['ip'], description: f"Температура датчика {i} более {LIMIT.MAX_TEMPERATURE}%. = {rezult} C"})
+                            error[switch].append({ 'typeEr': TYPE_ERROR.TEMPERATURE, 'ip': switches[switch]['ip'], 'description': f"Температура датчика {i} более {LIMIT.MAX_TEMPERATURE}%. = {rezult} C"})
                         else:
-                            error[switch] = [{ typeEr: TYPE_ERROR.TEMPERATURE, ip: switches[switch]['ip'], description: f"Температура датчика {i} более {LIMIT.MAX_TEMPERATURE}%. = {rezult} C"}]
+                            error[switch] = [{ 'typeEr': TYPE_ERROR.TEMPERATURE, 'ip': switches[switch]['ip'], 'description': f"Температура датчика {i} более {LIMIT.MAX_TEMPERATURE}%. = {rezult} C"}]
                     i = i + 1
             except Exception as e:
                 print('2')
@@ -108,7 +108,7 @@ def pingAll():
             if rez == 0:
                 temp.append(switch)
             else:
-                error[switch] = { typeEr: TYPE_ERROR.HOST_UNKNOWN, ip: switches[switch]['ip'], description: None}
+                error[switch] = { 'typeEr': TYPE_ERROR.HOST_UNKNOWN, 'ip': switches[switch]['ip'], 'description': None}
                 procStat.append([switch, 'null'])
                 tempStat.append([switch, 0, 'null'])
     errorInsert(error)

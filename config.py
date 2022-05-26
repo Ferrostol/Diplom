@@ -6,8 +6,9 @@ class LIMIT():
 
 
 class TYPE_ERROR(Enum):
-	HOST_UNKNOWN = 1,
+	HOST_UNKNOWN = 1
 	CPU_LOAD = 2
 	TEMPERATURE = 5
+
 
 
