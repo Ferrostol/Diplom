@@ -52,7 +52,7 @@ class database(object):
         return swww
 
     def getDeviceError(self):
-        sql = f"select switches.id id_err_info from switches join model on model.id=switches.model_id join error on error.id_swit=switches.id where status=true"
+        sql = f"select switches.id, id_err_info from switches join model on model.id=switches.model_id join error on error.id_swit=switches.id where status=true"
         self.cursor.execute(sql)
         swww = {}
         swt = self.cursor.fetchall()
@@ -93,12 +93,7 @@ class database(object):
         self.cursor.execute(sql)
         self.connect.commit()
 
-
     def deleteError(self, devices):
-        sql = (
-            "delete from error where id_swit in ("
-            + ",".join(devices)
-            + ");"
-        )
+        sql = "delete from error where id_swit in (" + ",".join(devices) + ");"
         self.cursor.execute(sql)
         self.connect.commit()

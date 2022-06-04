@@ -112,13 +112,15 @@ def check(switch_list):
         tasks.append(ioloop.create_task(request(switch, mibsList[switch])))
     wait_tasks = asyncio.wait(tasks)
     result = ioloop.run_until_complete(wait_tasks)
-    print(result)
+    errors = {}
+    [errors.update(el.result) for el in result]
     print(procStat)
     print(tempStat)
     huta.addProcStat(procStat)
     huta.addTempStat(tempStat)
     procStat = []
     tempStat = []
+    return errors
 
 
 def errorInsert(errorList):
@@ -165,9 +167,10 @@ def fiveMinutesMain():
     switches = huta.getSwitches()
     mibsList = huta.getMibs()
     onSwitches, error = pingAll(switches)
-    check(onSwitches)
-    errorInsert(error)
+    err = check(onSwitches)
+    error.update(err)
     print(error)
+    errorInsert(error)
 
 
 def twoMinutesMain():
@@ -175,8 +178,9 @@ def twoMinutesMain():
     switches = huta.getSwitches()
     mibsList = huta.getMibs()
     onSwitches, errors = pingAll(switches)
-    check(onSwitches)
-    print(error)
+    err = check(onSwitches)
+    errors.update(err)
+    print(errors)
 
 
 def oneMinutesMain():
