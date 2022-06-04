@@ -4,6 +4,7 @@ import subprocess  # Библиотека для работы с процесс�
 import asyncio  # Библиотека для асинхронного программирования
 from psycopg2 import OperationalError  # Импорт ошибки при работе с БД
 import aiosnmp  # Библиотека для работы с SNMP
+from aiosnmp import exceptions
 import schedule  # Библиотека для запуска функции с периодичностью
 
 from database import database
@@ -66,11 +67,16 @@ async def request(switch, mib):
                                     "description": f"Загрузка процессора более {LIMIT.MAX_CPU_LOAD}%. = {rezult}%",
                                 }
                             ]
-            except Exception as e:
-                print("2")
-                print(switches[switch]["ip"])
-                print(mib["proc"])
-                raise e
+            except exceptions.SnmpTimeoutError:
+                errors[switch] = {
+                    "typeEr": TYPE_ERROR.HOST_UNKNOWN,
+                    "ip": switches[switch]["ip"],
+                    "description": None,
+                }
+                if not mibsList[switch]["proc"] in (None, ""):
+                    procStat.append([switch, "null"])
+                if not mibsList[switch]["temp"] in (None, ""):
+                    tempStat.append([switch, 0, "null"])
 
         if not mib["temp"] in (None, ""):
             try:
@@ -96,11 +102,16 @@ async def request(switch, mib):
                                 }
                             ]
                     i = i + 1
-            except Exception as e:
-                print("2")
-                print(switches[switch]["ip"])
-                print(mib["temp"])
-                raise e
+            except exceptions.SnmpTimeoutError:
+                errors[switch] = {
+                    "typeEr": TYPE_ERROR.HOST_UNKNOWN,
+                    "ip": switches[switch]["ip"],
+                    "description": None,
+                }
+                if not mibsList[switch]["proc"] in (None, ""):
+                    procStat.append([switch, "null"])
+                if not mibsList[switch]["temp"] in (None, ""):
+                    tempStat.append([switch, 0, "null"])
     return errors
 
 
