@@ -52,18 +52,13 @@ class database(object):
         return swww
 
     def getDeviceError(self):
-        sql = f"select switches.id, switches.name, ip, port, err, model.name, id_err_info from switches join model on model.id=switches.model_id join error on error.id_swit=switches.id where status=true"
+        sql = f"select switches.id id_err_info from switches join model on model.id=switches.model_id join error on error.id_swit=switches.id where status=true"
         self.cursor.execute(sql)
         swww = {}
         swt = self.cursor.fetchall()
         for el in swt:
             swww[el[0]] = {
-                "switches_name": el[1],
-                "ip": el[2],
-                "port": el[3],
-                "err": el[4],
-                "model_name": el[5],
-                "id_err_info": el[6],
+                "id_err_info": el[1],
             }
         return swww
 
@@ -89,13 +84,21 @@ class database(object):
         self.cursor.execute(sql)
         self.connect.commit()
 
-    def addNewError(self, device, error):
-        sql = f"insert into error (device_id, error) values({device}, '{error}')"
+    def addNewError(self, errors):
+        sql = (
+            "insert into error (id_swit, id_err_info, description) values "
+            + ",".join([f"({error[0]},{error[1]},{error[2]})" for error in errors])
+            + ";"
+        )
         self.cursor.execute(sql)
         self.connect.commit()
 
 
-# def deleteError(device):
-# 	cursor = getCursorConnect()
-# 	sql = f"delete from Errors where device_id={device}"
-# 	cursor.execute(sql)
+    def deleteError(self, devices):
+        sql = (
+            "delete from error where id_swit in ("
+            + ",".join(devices)
+            + ");"
+        )
+        self.cursor.execute(sql)
+        self.connect.commit()

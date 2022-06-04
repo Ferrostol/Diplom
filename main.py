@@ -2,7 +2,7 @@ import time  # Библиотека для работы со временем
 import subprocess  # Библиотека для работы с процессами ОС
 
 import asyncio  # Библиотека для асинхронного программирования
-from psycopg2 import OperationalError
+from psycopg2 import OperationalError  # Импорт ошибки при работе с БД
 import aiosnmp  # Библиотека для работы с SNMP
 import schedule  # Библиотека для запуска функции с периодичностью
 
@@ -17,24 +17,19 @@ except OperationalError as e:
     exit()
 
 
-switches = []  # Инициализация массива в котором будет храниться информация о свичах
-mibsList = (
-    []
-)  # Инициализация массива в котором будет храниться информация о oid для свичей
-procStat = (
-    []
-)  # Инициализация массива в котором будет собрана статистика по работе процессора свичей
-tempStat = (
-    []
-)  # Инициализация массива в котором будет собрана статистика по температуре датчиков свичей
+switches = []  # Информация о свитчах
+mibsList = []  # MIB свитчей
+procStat = []  # Статистика процессора
+tempStat = []  # Статистика температуры
 
-error = {}  # Найденные ошибки в проверке свичей за 5 минут
-twoError = {}  # Найденные ошибки в проверке свичей за 2 минут
-oneError = {}  # Найденные ошибки в проверке свичей за 1 минут
+error = {}  # Найденные ошибки в проверке свитчей за 5 минут
+twoError = {}  # Найденные ошибки в проверке свитчей за 2 минут
+oneError = {}  # Найденные ошибки в проверке свитчей за 1 минут
 
 
 async def request(switch, mib):
-    global snmpEngine, switches, procStat, tempStat
+    global switches, procStat, tempStat
+    errors = {}
     try:
         snmp = aiosnmp.Snmp(
             host=switches[switch]["ip"],
@@ -55,8 +50,8 @@ async def request(switch, mib):
                     )
                     procStat.append([switch, rezult])
                     if LIMIT.MAX_CPU_LOAD <= rezult:
-                        if switch in error:
-                            error[switch].append(
+                        if switch in errors:
+                            errors[switch].append(
                                 {
                                     "typeEr": TYPE_ERROR.CPU_LOAD,
                                     "ip": switches[switch]["ip"],
@@ -64,7 +59,7 @@ async def request(switch, mib):
                                 }
                             )
                         else:
-                            error[switch] = [
+                            errors[switch] = [
                                 {
                                     "typeEr": TYPE_ERROR.CPU_LOAD,
                                     "ip": switches[switch]["ip"],
@@ -84,8 +79,8 @@ async def request(switch, mib):
                     rezult = int(res.value)
                     tempStat.append([switch, i, rezult])
                     if LIMIT.MAX_TEMPERATURE <= rezult:
-                        if switch in error:
-                            error[switch].append(
+                        if switch in errors:
+                            errors[switch].append(
                                 {
                                     "typeEr": TYPE_ERROR.TEMPERATURE,
                                     "ip": switches[switch]["ip"],
@@ -93,7 +88,7 @@ async def request(switch, mib):
                                 }
                             )
                         else:
-                            error[switch] = [
+                            errors[switch] = [
                                 {
                                     "typeEr": TYPE_ERROR.TEMPERATURE,
                                     "ip": switches[switch]["ip"],
@@ -106,6 +101,7 @@ async def request(switch, mib):
                 print(switches[switch]["ip"])
                 print(mib["temp"])
                 raise e
+    return errors
 
 
 def check(switch_list):
@@ -115,7 +111,8 @@ def check(switch_list):
     for switch in switch_list:
         tasks.append(ioloop.create_task(request(switch, mibsList[switch])))
     wait_tasks = asyncio.wait(tasks)
-    ioloop.run_until_complete(wait_tasks)
+    result = ioloop.run_until_complete(wait_tasks)
+    print(result)
     print(procStat)
     print(tempStat)
     huta.addProcStat(procStat)
@@ -130,69 +127,70 @@ def errorInsert(errorList):
         pass
 
 
-def pingAll():
-    global switches, error, procStat, tempStat, mibsList
+def ping(ip):
+    rez = subprocess.call(f"ping -c 1 -t 1 {ip} > /dev/null", shell=True)
+    if rez == 0:
+        return True
+    else:
+        rez = subprocess.call(f"ping -c 3 -t 1 {ip} > /dev/null", shell=True)
+        if rez <= 2:
+            return True
+        else:
+            return False
+
+
+def pingAll(switches):
+    global procStat, tempStat, mibsList
     temp = []
-    error = {}
+    errors = {}
     for switch in switches:
-        rez = subprocess.call(
-            f"ping -c 1 -t 1 {switches[switch]['ip']} > /dev/null", shell=True
-        )
-        if rez == 0:
+        rez = ping(switches[switch]["ip"])
+        if rez:
             temp.append(switch)
         else:
-            rez = subprocess.call(
-                f"ping -c 3 -t 1 {switches[switch]['ip']} > /dev/null", shell=True
-            )
-            if rez <= 2:
-                temp.append(switch)
-            else:
-                error[switch] = {
-                    "typeEr": TYPE_ERROR.HOST_UNKNOWN,
-                    "ip": switches[switch]["ip"],
-                    "description": None,
-                }
-                if not mibsList[switch]["proc"] in (None, ""):
-                    procStat.append([switch, "null"])
-                if not mibsList[switch]["temp"] in (None, ""):
-                    tempStat.append([switch, 0, "null"])
-    errorInsert(error)
-    return temp
+            errors[switch] = {
+                "typeEr": TYPE_ERROR.HOST_UNKNOWN,
+                "ip": switches[switch]["ip"],
+                "description": None,
+            }
+            if not mibsList[switch]["proc"] in (None, ""):
+                procStat.append([switch, "null"])
+            if not mibsList[switch]["temp"] in (None, ""):
+                tempStat.append([switch, 0, "null"])
+    return (temp, errors)
 
 
 def fiveMinutesMain():
-    global huta, switches, mibsList
+    global huta, switches, mibsList, error
     switches = huta.getSwitches()
     mibsList = huta.getMibs()
-    onSwitches = pingAll()
+    onSwitches, error = pingAll(switches)
     check(onSwitches)
-    print(error)  # Отображаем на экране имеющиеся ошибки
+    errorInsert(error)
+    print(error)
 
 
 def twoMinutesMain():
-    global huta, switches, mibsList
+    global huta, switches, mibsList, twoError
     switches = huta.getSwitches()
     mibsList = huta.getMibs()
-    onSwitches = pingAll()
+    onSwitches, errors = pingAll(switches)
     check(onSwitches)
-    print(error)  # Отображаем на экране имеющиеся ошибки
+    print(error)
 
 
 def oneMinutesMain():
-    global huta, switches, mibsList
+    global huta, switches, mibsList, oneError
     switches = huta.getSwitches()
     mibsList = huta.getMibs()
-    onSwitches = pingAll()
+    onSwitches, errors = pingAll(switches)
     check(onSwitches)
-    print(error)  # Отображаем на экране имеющиеся ошибки
+    print(error)
 
 
 def startProgramm():
     global huta, oneError
     oneError = huta.getDeviceError()
-    pass
-    # Получить список ошибок с БД
-    # Сформировать объект для проверки этих ошибок раз в минуту
 
 
 if __name__ == "__main__":
