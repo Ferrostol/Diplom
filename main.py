@@ -18,19 +18,14 @@ except OperationalError as e:
     exit()
 
 
-switches = []  # Информация о свитчах
-mibsList = []  # MIB свитчей
-procStat = []  # Статистика процессора
-tempStat = []  # Статистика температуры
-
-error = {}  # Найденные ошибки в проверке свитчей за 5 минут
-twoError = {}  # Найденные ошибки в проверке свитчей за 2 минут
-oneError = {}  # Найденные ошибки в проверке свитчей за 1 минут
+twoError = {}  # Ошибки которые надо проверить за 2 минут
+oneError = {}  # Ошибки которые надо проверить за 1 минут
 
 
-async def request(switch, mib):
-    global switches, procStat, tempStat
+async def request(switch, switches, mib):
     errors = {}
+    procStat = []
+    tempStat = []
     try:
         snmp = aiosnmp.Snmp(
             host=switches[switch]["ip"],
@@ -73,9 +68,9 @@ async def request(switch, mib):
                     "ip": switches[switch]["ip"],
                     "description": None,
                 }
-                if not mibsList[switch]["proc"] in (None, ""):
+                if not mib["proc"] in (None, ""):
                     procStat.append([switch, "null"])
-                if not mibsList[switch]["temp"] in (None, ""):
+                if not mib["temp"] in (None, ""):
                     tempStat.append([switch, 0, "null"])
 
         if not mib["temp"] in (None, ""):
@@ -108,30 +103,27 @@ async def request(switch, mib):
                     "ip": switches[switch]["ip"],
                     "description": None,
                 }
-                if not mibsList[switch]["proc"] in (None, ""):
+                if not mib["proc"] in (None, ""):
                     procStat.append([switch, "null"])
-                if not mibsList[switch]["temp"] in (None, ""):
+                if not mib["temp"] in (None, ""):
                     tempStat.append([switch, 0, "null"])
-    return errors
+    return (errors, procStat, tempStat)
 
 
-def check(switch_list):
-    global mibsList, procStat, tempStat
+def check(switch_list, mibsList):
     ioloop = asyncio.get_event_loop()
     tasks = []
     for switch in switch_list:
-        tasks.append(ioloop.create_task(request(switch, mibsList[switch])))
+        tasks.append(
+            ioloop.create_task(request(switch, switch_list[switch], mibsList[switch]))
+        )
     wait_tasks = asyncio.wait(tasks)
     result = ioloop.run_until_complete(wait_tasks)
     errors = {}
-    [errors.update(el.result) for el in result]
-    print(procStat)
-    print(tempStat)
-    huta.addProcStat(procStat)
-    huta.addTempStat(tempStat)
+    [errors.update(el.result()[0]) for el in result[0]]
     procStat = []
     tempStat = []
-    return errors
+    return (errors, procStat, tempStat)
 
 
 def errorInsert(errorList):
@@ -141,19 +133,22 @@ def errorInsert(errorList):
 
 
 def ping(ip):
-    rez = subprocess.call(f"ping -c 1 -t 1 {ip} > /dev/null", shell=True)
+    rez = subprocess.run(f"ping -c 1 -t 1 {ip}", stdout=subprocess.DEVNULL).returncode
     if rez == 0:
         return True
     else:
-        rez = subprocess.call(f"ping -c 3 -t 1 {ip} > /dev/null", shell=True)
-        if rez <= 2:
+        rez = subprocess.run(
+            f"ping -c 3 -t 1 {ip}", stdout=subprocess.DEVNULL
+        ).returncode
+        if rez == 0:
             return True
         else:
             return False
 
 
-def pingAll(switches):
-    global procStat, tempStat, mibsList
+def pingList(switches, mibsList):
+    procStat = []
+    tempStat = []
     temp = []
     errors = {}
     for switch in switches:
@@ -170,37 +165,78 @@ def pingAll(switches):
                 procStat.append([switch, "null"])
             if not mibsList[switch]["temp"] in (None, ""):
                 tempStat.append([switch, 0, "null"])
-    return (temp, errors)
+    return (temp, errors, procStat, tempStat)
+
+
+def runningCheck(switches, mibsList):
+    onSwitches, errors, procStat, tempStat = pingList(switches, mibsList)
+    err, proc, temp = check(onSwitches, mibsList)
+    errors.update(err)
+    procStat = procStat + proc
+    tempStat = tempStat + temp
+    huta.addProcStat(procStat)
+    huta.addTempStat(tempStat)
+    print(procStat)
+    print(tempStat)
+    return errors
 
 
 def fiveMinutesMain():
-    global huta, switches, mibsList, error
+    global huta
     switches = huta.getSwitches()
     mibsList = huta.getMibs()
-    onSwitches, error = pingAll(switches)
-    err = check(onSwitches)
-    error.update(err)
-    print(error)
-    errorInsert(error)
+    switches = {
+        key: val
+        for key, val in switches.items()
+        if not key in oneError.keys() and not key in twoError.keys()
+    }
+    mibsList = {key: val for key, val in mibsList.items() if key in switches.keys()}
+    if len(switches.keys()):
+        print("Five minutes")
+        error = runningCheck(switches, mibsList)
+        errorInsert(error)
+        print(error)
+        twoError.update(error)
 
 
 def twoMinutesMain():
-    global huta, switches, mibsList, twoError
-    switches = huta.getSwitches()
-    mibsList = huta.getMibs()
-    onSwitches, errors = pingAll(switches)
-    err = check(onSwitches)
-    errors.update(err)
-    print(errors)
+    global huta, twoError
+    errorTemp = twoError
+    twoError = {}
+    if len(errorTemp.keys()):
+        switches = huta.getSwitches()
+        mibsList = huta.getMibs()
+        switches = {
+            key: val for key, val in switches.items() if key in errorTemp.keys()
+        }
+        mibsList = {key: val for key, val in mibsList.items() if key in switches.keys()}
+        if len(switches.keys()) != len(errorTemp):
+            pass  # Удалить лишнее
+        if len(switches.keys()):
+            print("Two minutes")
+            errors = runningCheck(switches, mibsList)
+            print(errors)
+            oneError.update(errors)
 
 
 def oneMinutesMain():
-    global huta, switches, mibsList, oneError
-    switches = huta.getSwitches()
-    mibsList = huta.getMibs()
-    onSwitches, errors = pingAll(switches)
-    check(onSwitches)
-    print(error)
+    global huta, oneError
+    errorTemp = oneError
+    oneError = {}
+    if len(errorTemp.keys()):
+        switches = huta.getSwitches()
+        mibsList = huta.getMibs()
+        switches = {
+            key: val for key, val in switches.items() if key in errorTemp.keys()
+        }
+        mibsList = {key: val for key, val in mibsList.items() if key in switches.keys()}
+        if len(switches.keys()) != len(errorTemp):
+            pass  # Удалить лишнее
+        if len(switches.keys()):
+            print("One minutes")
+            errors = runningCheck(switches, mibsList)
+            print(errors)
+            oneError.update(errors)
 
 
 def startProgramm():
@@ -210,10 +246,12 @@ def startProgramm():
 
 if __name__ == "__main__":
     schedule.every(5).minutes.do(fiveMinutesMain)
-    # schedule.every(2).minutes.do(twoMinutesMain)
-    # schedule.every(1).minutes.do(oneMinutesMain)
+    schedule.every(2).minutes.do(twoMinutesMain)
+    schedule.every(1).minutes.do(oneMinutesMain)
     startProgramm()
     fiveMinutesMain()
+    twoMinutesMain()
+    oneMinutesMain()
     while True:
         schedule.run_pending()
         time.sleep(1)

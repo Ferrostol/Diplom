@@ -38,7 +38,7 @@ class database(object):
         return swww
 
     def getMibs(self):
-        sql = "select switches_id, community, proc, idleProc, temp from switches join mibsList on mibsList.switches_id=switches.id where status=true"
+        sql = "select switches_id, community, proc, idleProc, temp from switches left join mibsList on mibsList.switches_id=switches.id where status=true"
         self.cursor.execute(sql)
         swww = {}
         swt = self.cursor.fetchall()
