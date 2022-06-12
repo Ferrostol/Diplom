@@ -8,6 +8,7 @@ from aiosnmp import exceptions
 import schedule  # Библиотека для запуска функции с периодичностью
 
 from database import database
+from mail import mailClient
 from config import TYPE_ERROR, LIMIT
 
 
@@ -17,6 +18,11 @@ except OperationalError as e:
     print(e)
     exit()
 
+try:
+    mails = mailClient()
+except Exception as e:
+    print(e)
+    exit()
 
 twoError = {}  # Ошибки которые надо проверить за 2 минут
 oneError = {}  # Ошибки которые надо проверить за 1 минут
@@ -153,18 +159,20 @@ async def request(switch, switches, mib, lassErrorsPort):
         for port in massIn:
             if port in lassErrorsPort:
                 valueIn = lassErrorsPort[port][0] - massIn[port]
-                valueOut = lassErrorsPort[port][0] - massOut[port]
+                valueOut = lassErrorsPort[port][1] - massOut[port]
             else:
-                valueIn = massIn[port]
-                valueOut = massOut[port]
+                valueIn = 0
+                valueOut = 0
+
             lastValuePortError[port] = [massIn[port], massOut[port]]
+
             if valueIn < 0:
                 valueIn = 0
 
             if valueOut < 0:
                 valueOut = 0
 
-            portStat = [switch, int(str(port)[-3:]), valueIn, valueOut]
+            portStat.append([switch, int(str(port)[-4:]), valueIn, valueOut])
 
             if valueIn > 0:
                 if switch in errors:
@@ -172,7 +180,7 @@ async def request(switch, switches, mib, lassErrorsPort):
                         {
                             "typeEr": TYPE_ERROR.PORT_LOAD,
                             "ip": switches["ip"],
-                            "description": f"Ошибки на входе порта {int(str(port)[-3:])} появилось {valueIn} ошибок",
+                            "description": f"Ошибки на входе порта {int(str(port)[-4:])} появилось {valueIn} ошибок",
                         }
                     )
                 else:
@@ -180,7 +188,7 @@ async def request(switch, switches, mib, lassErrorsPort):
                         {
                             "typeEr": TYPE_ERROR.PORT_LOAD,
                             "ip": switches["ip"],
-                            "description": f"Ошибки на входе порта {int(str(port)[-3:])} появилось {valueIn} ошибок",
+                            "description": f"Ошибки на входе порта {int(str(port)[-4:])} появилось {valueIn} ошибок",
                         }
                     ]
             if valueOut > 0:
@@ -189,7 +197,7 @@ async def request(switch, switches, mib, lassErrorsPort):
                         {
                             "typeEr": TYPE_ERROR.PORT_LOAD,
                             "ip": switches["ip"],
-                            "description": f"Ошибки на выходе порта {int(str(port)[-3:])} появилось {valueOut} ошибок",
+                            "description": f"Ошибки на выходе порта {int(str(port)[-4:])} появилось {valueOut} ошибок",
                         }
                     )
                 else:
@@ -197,11 +205,11 @@ async def request(switch, switches, mib, lassErrorsPort):
                         {
                             "typeEr": TYPE_ERROR.PORT_LOAD,
                             "ip": switches["ip"],
-                            "description": f"Ошибки на выходе порта {int(str(port)[-3:])} появилось {valueOut} ошибок",
+                            "description": f"Ошибки на выходе порта {int(str(port)[-4:])} появилось {valueOut} ошибок",
                         }
                     ]
 
-    return (errors, procStat, tempStat, portStat, {switch: lassErrorsPort})
+    return (errors, procStat, tempStat, portStat, {switch: lastValuePortError})
 
 
 def check(switch_list, mibsList, lassErrorsPort):
@@ -214,7 +222,7 @@ def check(switch_list, mibsList, lassErrorsPort):
                     switch,
                     switch_list[switch],
                     mibsList[switch],
-                    lassErrorsPort[switch],
+                    lassErrorsPort[switch] if switch in lassErrorsPort else {},
                 )
             )
         )
@@ -228,18 +236,18 @@ def check(switch_list, mibsList, lassErrorsPort):
 
     lastValuePortError = {}
     for el in result[0]:
-        for ell in el.result()[4]:
-            lastValuePortError.update(ell)
+        lastValuePortError.update(el.result()[4])
     return (errors, procStat, tempStat, portStat, lastValuePortError)
 
 
 def errorInsert(errorList):
-    global huta
+    global huta, mails
     massError = []
     for swt in errorList:
         for el in errorList[swt]:
             massError.append([swt, el["typeEr"], el["description"]])
     huta.addNewError(massError)
+    mails.sendEmailError(typeErrorList, errorList)
 
 
 def ping(ip):
@@ -292,6 +300,7 @@ def runningCheck(switches, mibsList, lassErrorsPort):
         procStat = procStat + proc
         tempStat = tempStat + temp
         huta.addPortStat(portStat)
+        huta.updateLastPortError(lastValuePortError)
     huta.addProcStat(procStat)
     huta.addTempStat(tempStat)
     print(procStat)
@@ -368,8 +377,9 @@ def oneMinutesMain():
 
 
 def startProgramm():
-    global huta, oneError
+    global huta, oneError, typeErrorList
     oneError = huta.getDeviceError()
+    typeErrorList = huta.getTypeError()
 
 
 if __name__ == "__main__":

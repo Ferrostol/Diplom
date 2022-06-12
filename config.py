@@ -12,3 +12,11 @@ class TYPE_ERROR(Enum):
     MEMORY_LOAD = 3
     PORT_LOAD = 4
     TEMPERATURE = 5
+
+
+mailConf = {
+    "user": "ferrostol@sibstrin.ru",
+    "server": "127.0.0.1",
+    "port": 25,
+    "to": ["skudin2000@yandex.ru", "skudin2000@mail.ru"],
+}

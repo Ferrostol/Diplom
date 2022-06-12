@@ -18,12 +18,19 @@ class database(object):
     def getCursor(self):
         self.cursor = self.connect.cursor()
 
-    # def __del__(self):
-    # 	self.cursor.close()
-    # 	self.connect.close()
+    def __del__(self):
+        self.cursor.close()
+        self.connect.close()
+
+    def getTypeError(self):
+        sql = "select * from errorlist"
+        self.cursor.execute(sql)
+        swt = self.cursor.fetchall()
+        swww = {el[0]: el[1] for el in swt}
+        return swww
 
     def getSwitches(self):
-        sql = "select switches.id, switches.name, ip, port, err, model.name from switches join model on model.id=switches.model_id where status=true"
+        sql = "select switches.id, switches.name, ip, port, model.name from switches join model on model.id=switches.model_id where status=true"
         self.cursor.execute(sql)
         swww = {}
         swt = self.cursor.fetchall()
@@ -32,8 +39,7 @@ class database(object):
                 "switches_name": el[1],
                 "ip": el[2],
                 "port": el[3],
-                "err": el[4],
-                "model_name": el[5],
+                "model_name": el[4],
             }
         return swww
 
@@ -68,7 +74,10 @@ class database(object):
         swww = {}
         swt = self.cursor.fetchall()
         for el in swt:
-            swww[el[0]][el[1]] = [el[2], el[3]]
+            if not el[0] in swww:
+                swww.update({el[0]: {el[1]: [el[2], el[3]]}})
+            else:
+                swww[el[0]].update({el[1]: [el[2], el[3]]})
         return swww
 
     def addProcStat(self, procStat):
@@ -95,19 +104,14 @@ class database(object):
 
     def addPortStat(self, portStat):
         sql = (
-            "insert into statport (switches_id,num_port, error_in,error_out) values "
+            "insert into statport (switches_id, num_port, error_in,error_out) values "
             + ",".join(
-                [
-                    f"({switch},{port},{portStat[switch][port][0]},{portStat[switch][port][1]})"
-                    for switch in portStat
-                    for port in portStat[switch]
-                ]
+                [f"({stat[0]},{stat[1]},{stat[2]},{stat[3]})" for stat in portStat]
             )
             + ";"
         )
-        print(sql)
-        # self.cursor.execute(sql)
-        # self.connect.commit()
+        self.cursor.execute(sql)
+        self.connect.commit()
 
     def addNewError(self, errors):
         if len(errors) == 0:
@@ -115,7 +119,7 @@ class database(object):
         sql = (
             "insert into error (id_swit, id_err_info, description) values "
             + ",".join(
-                [f"({error[0]},{error[1].value},{error[2]})" for error in errors]
+                [f"({error[0]},{error[1].value},'{error[2]}')" for error in errors]
             )
             + ";"
         )
@@ -129,6 +133,19 @@ class database(object):
             "delete from error where id_swit in ("
             + ",".join([str(el) for el in devices])
             + ");"
+        )
+        self.cursor.execute(sql)
+        self.connect.commit()
+
+    def updateLastPortError(self, lassErrorsPort):
+        if len(lassErrorsPort.keys()) == 0:
+            return
+        sql = " ".join(
+            [
+                f"select updateLastPortError({switch},{port},{lassErrorsPort[switch][port][0]},{lassErrorsPort[switch][port][1]});"
+                for switch in lassErrorsPort
+                for port in lassErrorsPort[switch]
+            ]
         )
         self.cursor.execute(sql)
         self.connect.commit()
