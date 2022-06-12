@@ -9,4 +9,6 @@ class LIMIT:
 class TYPE_ERROR(Enum):
     HOST_UNKNOWN = 1
     CPU_LOAD = 2
+    MEMORY_LOAD = 3
+    PORT_LOAD = 4
     TEMPERATURE = 5

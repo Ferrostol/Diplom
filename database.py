@@ -62,6 +62,15 @@ class database(object):
             }
         return swww
 
+    def getPortError(self):
+        sql = f"select switches.id, num_port, error_in, error_out from switches join lastporterror on lastporterror.switches_id=switches.id where status=true"
+        self.cursor.execute(sql)
+        swww = {}
+        swt = self.cursor.fetchall()
+        for el in swt:
+            swww[el[0]][el[1]] = [el[2], el[3]]
+        return swww
+
     def addProcStat(self, procStat):
         if len(procStat) == 0:
             return
@@ -84,16 +93,42 @@ class database(object):
         self.cursor.execute(sql)
         self.connect.commit()
 
+    def addPortStat(self, portStat):
+        sql = (
+            "insert into statport (switches_id,num_port, error_in,error_out) values "
+            + ",".join(
+                [
+                    f"({switch},{port},{portStat[switch][port][0]},{portStat[switch][port][1]})"
+                    for switch in portStat
+                    for port in portStat[switch]
+                ]
+            )
+            + ";"
+        )
+        print(sql)
+        # self.cursor.execute(sql)
+        # self.connect.commit()
+
     def addNewError(self, errors):
+        if len(errors) == 0:
+            return
         sql = (
             "insert into error (id_swit, id_err_info, description) values "
-            + ",".join([f"({error[0]},{error[1]},{error[2]})" for error in errors])
+            + ",".join(
+                [f"({error[0]},{error[1].value},{error[2]})" for error in errors]
+            )
             + ";"
         )
         self.cursor.execute(sql)
         self.connect.commit()
 
     def deleteError(self, devices):
-        sql = "delete from error where id_swit in (" + ",".join(devices) + ");"
+        if len(devices) == 0:
+            return
+        sql = (
+            "delete from error where id_swit in ("
+            + ",".join([str(el) for el in devices])
+            + ");"
+        )
         self.cursor.execute(sql)
         self.connect.commit()
