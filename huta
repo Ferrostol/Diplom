@@ -1,0 +1,37 @@
+#!/bin/sh
+
+. /etc/rc.subr
+
+name=huta
+rcvar=huta_enable
+pidfile=/var/run/${name}.pid
+echodate_user=ferrostol
+
+command="/usr/home/ferrostol/huta-diplom/main.py";
+
+start_cmd="huta_start"
+stop_cmd="huta_stop"
+status_cmd="huta_status"
+
+huta_start() {
+  /usr/sbin/daemon -P ${pidfile} -r -f -u $echodate_user $command
+}
+
+huta_stop() {
+  if [ -e "${pidfile}" ]; then
+    kill -s TERM `cat ${pidfile}`
+  else
+    echo "${name} is not running"
+  fi
+}
+
+huta_status() {
+  if [ -e "${pidfile}" ]; then
+    echo "${name} is running as pid `cat ${pidfile}`"
+  else
+    echo "${name} is not running"
+  fi
+}
+
+load_rc_config ${name}
+run_rc_command "$1"

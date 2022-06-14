@@ -1,3 +1,4 @@
+#!/usr/local/bin/python3
 import time  # Библиотека для работы со временем
 import subprocess  # Библиотека для работы с процессами ОС
 
@@ -8,7 +9,7 @@ from aiosnmp import exceptions
 import schedule  # Библиотека для запуска функции с периодичностью
 
 from database import database
-from mail import mailClient
+from emailClient import mailClient
 from config import TYPE_ERROR, LIMIT
 
 
@@ -16,16 +17,21 @@ try:
     huta = database()
 except OperationalError as e:
     print(e)
+    print("Ошибка подключения к базе данных")
     exit()
 
 try:
     mails = mailClient()
 except Exception as e:
     print(e)
+    print("Ошибка SMTP")
     exit()
 
 twoError = {}  # Ошибки которые надо проверить за 2 минут
 oneError = {}  # Ошибки которые надо проверить за 1 минут
+
+noSendingErrorToMail = {}  # Ошибки о которых не сообщили администратору
+noSendingErrorToDatabase = {}  # Ошибки о которых не отправлены в базу данных
 
 
 async def request(switch, switches, mib, lassErrorsPort):
@@ -42,9 +48,20 @@ async def request(switch, switches, mib, lassErrorsPort):
             timeout=4,
         )
     except Exception as e:
-        print("1")
-        print(switches["ip"])
-        raise e
+        print(e)
+        print("SNMP error", switches["ip"])
+        errors[switch] = [
+            {
+                "typeEr": TYPE_ERROR.SNMP_ERROR,
+                "ip": switches[switch]["ip"],
+                "description": "null",
+            }
+        ]
+        if not mib["proc"] in (None, ""):
+            procStat.append([switch, "null"])
+        if not mib["temp"] in (None, ""):
+            tempStat.append([switch, 0, "null"])
+
     else:
         if not mib["proc"] in (None, ""):
             try:
@@ -89,8 +106,9 @@ async def request(switch, switches, mib, lassErrorsPort):
                     ]
                 if not mib["proc"] in (None, ""):
                     procStat.append([switch, "null"])
-                if not mib["temp"] in (None, ""):
-                    tempStat.append([switch, 0, "null"])
+            except Exception as e:
+                print(e)
+                print("CPU Error", switches["ip"])
 
         if not mib["temp"] in (None, ""):
             try:
@@ -133,81 +151,104 @@ async def request(switch, switches, mib, lassErrorsPort):
                             "description": "null",
                         }
                     ]
-                if not mib["proc"] in (None, ""):
-                    procStat.append([switch, "null"])
                 if not mib["temp"] in (None, ""):
                     tempStat.append([switch, 0, "null"])
+            except Exception as e:
+                print(e)
+                print("Temperature Error", switches["ip"])
 
-        # Получаем какие порты являются портами для интернета
-        massIndex = [
-            int(res.oid[str(res.oid).rindex(".") + 1 :])
-            for res in await snmp.bulk_walk("1.3.6.1.2.1.2.2.1.3")
-            if res.value in (6, 62)
-        ]
+        try:
+            # Получаем какие порты являются портами для интернета
+            massIndex = [
+                int(res.oid[str(res.oid).rindex(".") + 1 :])
+                for res in await snmp.bulk_walk("1.3.6.1.2.1.2.2.1.3")
+                if res.value in (6, 62)
+            ]
 
-        massIn = {
-            int(res.oid[str(res.oid).rindex(".") + 1 :]): res.value
-            for res in await snmp.bulk_walk("1.3.6.1.2.1.2.2.1.14")
-            if int(res.oid[str(res.oid).rindex(".") + 1 :]) in massIndex
-        }
-        massOut = {
-            int(res.oid[str(res.oid).rindex(".") + 1 :]): res.value
-            for res in await snmp.bulk_walk("1.3.6.1.2.1.2.2.1.20")
-            if int(res.oid[str(res.oid).rindex(".") + 1 :]) in massIndex
-        }
+            massIn = {
+                int(res.oid[str(res.oid).rindex(".") + 1 :]): res.value
+                for res in await snmp.bulk_walk("1.3.6.1.2.1.2.2.1.14")
+                if int(res.oid[str(res.oid).rindex(".") + 1 :]) in massIndex
+            }
+            massOut = {
+                int(res.oid[str(res.oid).rindex(".") + 1 :]): res.value
+                for res in await snmp.bulk_walk("1.3.6.1.2.1.2.2.1.20")
+                if int(res.oid[str(res.oid).rindex(".") + 1 :]) in massIndex
+            }
 
-        for port in massIn:
-            if port in lassErrorsPort:
-                valueIn = lassErrorsPort[port][0] - massIn[port]
-                valueOut = lassErrorsPort[port][1] - massOut[port]
+            for port in massIn:
+                if port in lassErrorsPort:
+                    valueIn = lassErrorsPort[port][0] - massIn[port]
+                    valueOut = lassErrorsPort[port][1] - massOut[port]
+                else:
+                    valueIn = 0
+                    valueOut = 0
+
+                lastValuePortError[port] = [massIn[port], massOut[port]]
+
+                if valueIn < 0:
+                    valueIn = 0
+
+                if valueOut < 0:
+                    valueOut = 0
+
+                portStat.append([switch, int(str(port)[-4:]), valueIn, valueOut])
+
+                if valueIn > 0:
+                    if switch in errors:
+                        errors[switch].append(
+                            {
+                                "typeEr": TYPE_ERROR.PORT_LOAD,
+                                "ip": switches["ip"],
+                                "description": f"Ошибки на входе порта {int(str(port)[-4:])} появилось {valueIn} ошибок",
+                            }
+                        )
+                    else:
+                        errors[switch] = [
+                            {
+                                "typeEr": TYPE_ERROR.PORT_LOAD,
+                                "ip": switches["ip"],
+                                "description": f"Ошибки на входе порта {int(str(port)[-4:])} появилось {valueIn} ошибок",
+                            }
+                        ]
+                if valueOut > 0:
+                    if switch in errors:
+                        errors[switch].append(
+                            {
+                                "typeEr": TYPE_ERROR.PORT_LOAD,
+                                "ip": switches["ip"],
+                                "description": f"Ошибки на выходе порта {int(str(port)[-4:])} появилось {valueOut} ошибок",
+                            }
+                        )
+                    else:
+                        errors[switch] = [
+                            {
+                                "typeEr": TYPE_ERROR.PORT_LOAD,
+                                "ip": switches["ip"],
+                                "description": f"Ошибки на выходе порта {int(str(port)[-4:])} появилось {valueOut} ошибок",
+                            }
+                        ]
+        except exceptions.SnmpTimeoutError:
+            if switch in errors:
+                errors[switch].append(
+                    {
+                        "typeEr": TYPE_ERROR.HOST_UNKNOWN,
+                        "ip": switches["ip"],
+                        "description": "null",
+                    }
+                )
             else:
-                valueIn = 0
-                valueOut = 0
+                errors[switch] = [
+                    {
+                        "typeEr": TYPE_ERROR.HOST_UNKNOWN,
+                        "ip": switches["ip"],
+                        "description": "null",
+                    }
+                ]
 
-            lastValuePortError[port] = [massIn[port], massOut[port]]
-
-            if valueIn < 0:
-                valueIn = 0
-
-            if valueOut < 0:
-                valueOut = 0
-
-            portStat.append([switch, int(str(port)[-4:]), valueIn, valueOut])
-
-            if valueIn > 0:
-                if switch in errors:
-                    errors[switch].append(
-                        {
-                            "typeEr": TYPE_ERROR.PORT_LOAD,
-                            "ip": switches["ip"],
-                            "description": f"Ошибки на входе порта {int(str(port)[-4:])} появилось {valueIn} ошибок",
-                        }
-                    )
-                else:
-                    errors[switch] = [
-                        {
-                            "typeEr": TYPE_ERROR.PORT_LOAD,
-                            "ip": switches["ip"],
-                            "description": f"Ошибки на входе порта {int(str(port)[-4:])} появилось {valueIn} ошибок",
-                        }
-                    ]
-            if valueOut > 0:
-                if switch in errors:
-                    errors[switch].append(
-                        {
-                            "typeEr": TYPE_ERROR.PORT_LOAD,
-                            "ip": switches["ip"],
-                            "description": f"Ошибки на выходе порта {int(str(port)[-4:])} появилось {valueOut} ошибок",
-                        }
-                    )
-                else:
-                    errors[switch] = [
-                        {
-                            "typeEr": TYPE_ERROR.PORT_LOAD,
-                            "ip": switches["ip"],
-                            "description": f"Ошибки на выходе порта {int(str(port)[-4:])} появилось {valueOut} ошибок",
-                        }
-                    ]
+        except Exception as e:
+            print(e)
+            print("Port Error", switches["ip"])
 
     return (errors, procStat, tempStat, portStat, {switch: lastValuePortError})
 
@@ -241,13 +282,41 @@ def check(switch_list, mibsList, lassErrorsPort):
 
 
 def errorInsert(errorList):
-    global huta, mails
+    global huta, mails, twoError, oneError, noSendingErrorToMail, noSendingErrorToDatabase
     massError = []
+    errorListMail = errorList
+    if len(noSendingErrorToDatabase.keys()):
+        swtList = list(twoError.keys() + oneError.keys())
+        noSendingErrorToMail = {
+            key: val for key, val in noSendingErrorToDatabase.items() if key in swtList
+        }
+        errorList.update(noSendingErrorToDatabase)
     for swt in errorList:
         for el in errorList[swt]:
             massError.append([swt, el["typeEr"], el["description"]])
-    huta.addNewError(massError)
-    mails.sendEmailError(typeErrorList, errorList)
+
+    try:
+        huta.addNewError(massError)
+    except Exception as e:
+        print(e)
+        noSendingErrorToDatabase = errorList
+    else:
+        noSendingErrorToDatabase = {}
+
+    if len(noSendingErrorToMail.keys()):
+        swtList = list(twoError.keys() + oneError.keys())
+        noSendingErrorToMail = {
+            key: val for key, val in noSendingErrorToMail.items() if key in swtList
+        }
+        errorListMail.update(noSendingErrorToMail)
+
+    try:
+        mails.sendEmailError(typeErrorList, errorListMail)
+    except Exception as e:
+        print(e)
+        noSendingErrorToMail = errorListMail
+    else:
+        noSendingErrorToMail = {}
 
 
 def ping(ip):
@@ -299,10 +368,18 @@ def runningCheck(switches, mibsList, lassErrorsPort):
         errors.update(err)
         procStat = procStat + proc
         tempStat = tempStat + temp
-        huta.addPortStat(portStat)
-        huta.updateLastPortError(lastValuePortError)
-    huta.addProcStat(procStat)
-    huta.addTempStat(tempStat)
+        try:
+            huta.addPortStat(portStat)
+            huta.updateLastPortError(lastValuePortError)
+        except Exception as e:
+            print(e)
+            print("Ошибка выгрузки статистики по портам")
+    try:
+        huta.addProcStat(procStat)
+        huta.addTempStat(tempStat)
+    except Exception as e:
+        print(e)
+        print("Ошибка выгрузки статистики по процессору и температуре")
     print(procStat)
     print(tempStat)
     return errors
@@ -310,13 +387,18 @@ def runningCheck(switches, mibsList, lassErrorsPort):
 
 def fiveMinutesMain():
     global huta
-    switches = huta.getSwitches()
-    mibsList = huta.getMibs()
-    lassErrorsPort = huta.getPortError()
+    try:
+        switches = huta.getSwitches()
+        mibsList = huta.getMibs()
+        lassErrorsPort = huta.getPortError()
+    except Exception as e:
+        print(e)
+        print("Ошибка получения данных из базы данных")
+        return
     switches = {
         key: val
         for key, val in switches.items()
-        if not key in oneError.keys() and not key in twoError.keys()
+        if not key in list(twoError.keys() + oneError.keys())
     }
     mibsList = {key: val for key, val in mibsList.items() if key in switches.keys()}
     lassErrorsPort = {
@@ -331,13 +413,18 @@ def fiveMinutesMain():
 
 
 def twoMinutesMain():
-    global huta, twoError
+    global huta, twoError, noSendingErrorToMail, noSendingErrorToDatabase
     errorTemp = twoError
     twoError = {}
     if len(errorTemp.keys()):
-        switches = huta.getSwitches()
-        mibsList = huta.getMibs()
-        lassErrorsPort = huta.getPortError()
+        try:
+            switches = huta.getSwitches()
+            mibsList = huta.getMibs()
+            lassErrorsPort = huta.getPortError()
+        except Exception as e:
+            print(e)
+            print("Ошибка получения данных из базы данных")
+            return
         switches = {
             key: val for key, val in switches.items() if key in errorTemp.keys()
         }
@@ -351,6 +438,8 @@ def twoMinutesMain():
             huta.deleteError(list(errorTemp.keys() - errors.keys()))
             print(errors)
             oneError.update(errors)
+            if len(list(noSendingErrorToDatabase.keys() + noSendingErrorToMail.keys())):
+                errorInsert({})
 
 
 def oneMinutesMain():
@@ -358,9 +447,14 @@ def oneMinutesMain():
     errorTemp = oneError
     oneError = {}
     if len(errorTemp.keys()):
-        switches = huta.getSwitches()
-        mibsList = huta.getMibs()
-        lassErrorsPort = huta.getPortError()
+        try:
+            switches = huta.getSwitches()
+            mibsList = huta.getMibs()
+            lassErrorsPort = huta.getPortError()
+        except Exception as e:
+            print(e)
+            print("Ошибка получения данных из базы данных")
+            return
         switches = {
             key: val for key, val in switches.items() if key in errorTemp.keys()
         }
@@ -374,6 +468,8 @@ def oneMinutesMain():
             huta.deleteError(list(errorTemp.keys() - errors.keys()))
             print(errors)
             oneError.update(errors)
+            if len(list(noSendingErrorToDatabase.keys() + noSendingErrorToMail.keys())):
+                errorInsert({})
 
 
 def startProgramm():

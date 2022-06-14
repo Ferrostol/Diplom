@@ -18,7 +18,7 @@ class mailClient:
             for el in errorList[swt]:
                 text = (
                     text
-                    + f"\r\n\t--Тип: {typeErrorList[el['typeEr']]}. {'Описание: ' + el['description'] if el['description'] != 'null' else ''}"
+                    + f"\r\n\t--Тип: {typeErrorList[el['typeEr'].value]}. {'Описание: ' + el['description'] if el['description'] != 'null' else ''}"
                 )
         for toEmail in mailConf["to"]:
             body = "\r\n".join(

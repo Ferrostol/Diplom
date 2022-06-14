@@ -12,6 +12,7 @@ class TYPE_ERROR(Enum):
     MEMORY_LOAD = 3
     PORT_LOAD = 4
     TEMPERATURE = 5
+    SNMP_ERROR = 6
 
 
 mailConf = {
