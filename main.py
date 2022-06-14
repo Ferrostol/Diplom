@@ -286,7 +286,7 @@ def errorInsert(errorList):
     massError = []
     errorListMail = errorList
     if len(noSendingErrorToDatabase.keys()):
-        swtList = list(twoError.keys() + oneError.keys())
+        swtList = list(twoError.keys()) + list(oneError.keys())
         noSendingErrorToMail = {
             key: val for key, val in noSendingErrorToDatabase.items() if key in swtList
         }
@@ -304,7 +304,7 @@ def errorInsert(errorList):
         noSendingErrorToDatabase = {}
 
     if len(noSendingErrorToMail.keys()):
-        swtList = list(twoError.keys() + oneError.keys())
+        swtList = list(twoError.keys()) + list(oneError.keys())
         noSendingErrorToMail = {
             key: val for key, val in noSendingErrorToMail.items() if key in swtList
         }
@@ -398,7 +398,7 @@ def fiveMinutesMain():
     switches = {
         key: val
         for key, val in switches.items()
-        if not key in list(twoError.keys() + oneError.keys())
+        if not key in list(twoError.keys()) + list(oneError.keys())
     }
     mibsList = {key: val for key, val in mibsList.items() if key in switches.keys()}
     lassErrorsPort = {
@@ -438,7 +438,10 @@ def twoMinutesMain():
             huta.deleteError(list(errorTemp.keys() - errors.keys()))
             print(errors)
             oneError.update(errors)
-            if len(list(noSendingErrorToDatabase.keys() + noSendingErrorToMail.keys())):
+            if len(
+                list(noSendingErrorToDatabase.keys())
+                + list(noSendingErrorToMail.keys())
+            ):
                 errorInsert({})
 
 
@@ -468,7 +471,10 @@ def oneMinutesMain():
             huta.deleteError(list(errorTemp.keys() - errors.keys()))
             print(errors)
             oneError.update(errors)
-            if len(list(noSendingErrorToDatabase.keys() + noSendingErrorToMail.keys())):
+            if len(
+                list(noSendingErrorToDatabase.keys())
+                + list(noSendingErrorToMail.keys())
+            ):
                 errorInsert({})
 
 
