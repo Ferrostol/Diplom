@@ -1,4 +1,5 @@
 #!/usr/local/bin/python3
+import logging
 import time  # Библиотека для работы со временем
 import subprocess  # Библиотека для работы с процессами ОС
 
@@ -12,20 +13,39 @@ from database import database
 from emailClient import mailClient
 from config import TYPE_ERROR, LIMIT
 
+logger = logging.getLogger("mainFile")
+logger.setLevel(logging.INFO)
+
+fh = logging.FileHandler("huta.log")
+
+formatter = logging.Formatter("%(asctime)s - %(name)s - %(levelname)s - %(message)s")
+fh.setFormatter(formatter)
+
+logger.addHandler(fh)
+
+logger.info("Program started")
 
 try:
+    logger.info("Started connect to database")
     huta = database()
 except OperationalError as e:
-    print(e)
-    print("Ошибка подключения к базе данных")
+    logger.error("Database initialization error")
+    logger.error(e)
+    logger.warning("Program ended")
     exit()
+else:
+    logger.info("Successful connection to database")
 
 try:
+    logger.info("Start of initialization of the SMTP mail client")
     mails = mailClient()
 except Exception as e:
-    print(e)
-    print("Ошибка SMTP")
+    logger.error("Mail SMTP client initialization error")
+    logger.error(e)
+    logger.warning("Program ended")
     exit()
+else:
+    logger.info("Successful of initialization of the SMTP mail client")
 
 twoError = {}  # Ошибки которые надо проверить за 2 минут
 oneError = {}  # Ошибки которые надо проверить за 1 минут
@@ -35,6 +55,7 @@ noSendingErrorToDatabase = {}  # Ошибки о которых не отпра�
 
 
 async def request(switch, switches, mib, lassErrorsPort):
+    global logger
     errors = {}
     procStat = []
     tempStat = []
@@ -48,8 +69,8 @@ async def request(switch, switches, mib, lassErrorsPort):
             timeout=4,
         )
     except Exception as e:
-        print(e)
-        print("SNMP error", switches["ip"])
+        logger.error(f"SNMP connect error {switches['ip']}")
+        logger.error(e)
         errors[switch] = [
             {
                 "typeEr": TYPE_ERROR.SNMP_ERROR,
@@ -107,8 +128,8 @@ async def request(switch, switches, mib, lassErrorsPort):
                 if not mib["proc"] in (None, ""):
                     procStat.append([switch, "null"])
             except Exception as e:
-                print(e)
-                print("CPU Error", switches["ip"])
+                logger.error(f"Processor data acquisition error. {switches['ip']}")
+                logger.error(e)
 
         if not mib["temp"] in (None, ""):
             try:
@@ -154,8 +175,8 @@ async def request(switch, switches, mib, lassErrorsPort):
                 if not mib["temp"] in (None, ""):
                     tempStat.append([switch, 0, "null"])
             except Exception as e:
-                print(e)
-                print("Temperature Error", switches["ip"])
+                logger.error(f"Temperature data acquisition error. {switches['ip']}")
+                logger.error(e)
 
         try:
             # Получаем какие порты являются портами для интернета
@@ -247,13 +268,15 @@ async def request(switch, switches, mib, lassErrorsPort):
                 ]
 
         except Exception as e:
-            print(e)
-            print("Port Error", switches["ip"])
+            logger.error(f"Ports data acquisition error. {switches['ip']}")
+            logger.error(e)
 
     return (errors, procStat, tempStat, portStat, {switch: lastValuePortError})
 
 
 def check(switch_list, mibsList, lassErrorsPort):
+    global logger
+    logger.info("Start sending asynchronous requests")
     ioloop = asyncio.get_event_loop()
     tasks = []
     for switch in switch_list:
@@ -269,6 +292,7 @@ def check(switch_list, mibsList, lassErrorsPort):
         )
     wait_tasks = asyncio.wait(tasks)
     result = ioloop.run_until_complete(wait_tasks)
+    logger.info("End sending asynchronous requests")
     errors = {}
     [errors.update(el.result()[0]) for el in result[0]]
     procStat = [ell for el in result[0] for ell in el.result()[1] if len(ell)]
@@ -282,7 +306,8 @@ def check(switch_list, mibsList, lassErrorsPort):
 
 
 def errorInsert(errorList):
-    global huta, mails, twoError, oneError, noSendingErrorToMail, noSendingErrorToDatabase
+    global huta, mails, twoError, oneError, noSendingErrorToMail, noSendingErrorToDatabase, logger
+    logger.info("Start sending error information")
     massError = []
     errorListMail = errorList
     if len(noSendingErrorToDatabase.keys()):
@@ -294,14 +319,17 @@ def errorInsert(errorList):
     for swt in errorList:
         for el in errorList[swt]:
             massError.append([swt, el["typeEr"], el["description"]])
-
-    try:
-        huta.addNewError(massError)
-    except Exception as e:
-        print(e)
-        noSendingErrorToDatabase = errorList
-    else:
-        noSendingErrorToDatabase = {}
+    if len(massError):
+        logger.info("Start sending error information to the database")
+        try:
+            huta.addNewError(massError)
+        except Exception as e:
+            logger.error("Error sending error information to the database")
+            logger.error(e)
+            noSendingErrorToDatabase = errorList
+        else:
+            noSendingErrorToDatabase = {}
+            logger.info("End sending error information to the database")
 
     if len(noSendingErrorToMail.keys()):
         swtList = list(twoError.keys()) + list(oneError.keys())
@@ -310,13 +338,19 @@ def errorInsert(errorList):
         }
         errorListMail.update(noSendingErrorToMail)
 
-    try:
-        mails.sendEmailError(typeErrorList, errorListMail)
-    except Exception as e:
-        print(e)
-        noSendingErrorToMail = errorListMail
-    else:
-        noSendingErrorToMail = {}
+    if len(errorListMail.keys()):
+        logger.info("Start sending error information to email")
+        try:
+            mails.sendEmailError(typeErrorList, errorListMail)
+        except Exception as e:
+            logger.error("Error sending error information to email")
+            logger.error(e)
+            noSendingErrorToMail = errorListMail
+        else:
+            noSendingErrorToMail = {}
+            logger.info("End sending error information to email")
+
+    logger.info("End sending error information")
 
 
 def ping(ip):
@@ -336,10 +370,12 @@ def ping(ip):
 
 
 def pingList(switches, mibsList):
+    global logger
     procStat = []
     tempStat = []
     temp = {}
     errors = {}
+    logger.info("Start checking the connection with switches")
     for switch in switches:
         rez = ping(switches[switch]["ip"])
         if rez:
@@ -356,10 +392,12 @@ def pingList(switches, mibsList):
                 procStat.append([switch, "null"])
             if not mibsList[switch]["temp"] in (None, ""):
                 tempStat.append([switch, 0, "null"])
+    logger.info("End checking the connection with switches")
     return (temp, errors, procStat, tempStat)
 
 
 def runningCheck(switches, mibsList, lassErrorsPort):
+    global logger
     onSwitches, errors, procStat, tempStat = pingList(switches, mibsList)
     if len(onSwitches.keys()):
         err, proc, temp, portStat, lastValuePortError = check(
@@ -368,33 +406,52 @@ def runningCheck(switches, mibsList, lassErrorsPort):
         errors.update(err)
         procStat = procStat + proc
         tempStat = tempStat + temp
+        logger.info("Start sending statistics to the database by ports")
         try:
             huta.addPortStat(portStat)
             huta.updateLastPortError(lastValuePortError)
         except Exception as e:
-            print(e)
-            print("Ошибка выгрузки статистики по портам")
+            logger.error("Error sending statistics by ports to the database")
+            logger.error(e)
+        else:
+            logger.info("End sending statistics to the database by ports")
+
+    logger.info("Start sending statistics to the database by processor")
     try:
         huta.addProcStat(procStat)
+    except Exception as e:
+        logger.error("Error sending statistics by processor to the database")
+        logger.error(e)
+    else:
+        logger.info("End sending statistics to the database by processor")
+
+    logger.info("Start sending statistics to the database by temperature")
+    try:
         huta.addTempStat(tempStat)
     except Exception as e:
-        print(e)
-        print("Ошибка выгрузки статистики по процессору и температуре")
-    print(procStat)
-    print(tempStat)
+        logger.error("Error sending statistics by temperature to the database")
+        logger.error(e)
+    else:
+        logger.info("End sending statistics to the database by temperature")
+
     return errors
 
 
 def fiveMinutesMain():
-    global huta
+    global huta, logger
+    logger.info("Start of the check every 5 minutes")
     try:
+        logger.info("Start of getting data from the database")
         switches = huta.getSwitches()
         mibsList = huta.getMibs()
         lassErrorsPort = huta.getPortError()
     except Exception as e:
-        print(e)
-        print("Ошибка получения данных из базы данных")
+        logger.error("Error getting data from the database")
+        logger.error(e)
         return
+    else:
+        logger.info("Successful of getting data from the database")
+
     switches = {
         key: val
         for key, val in switches.items()
@@ -405,26 +462,32 @@ def fiveMinutesMain():
         key: val for key, val in lassErrorsPort.items() if key in switches.keys()
     }
     if len(switches.keys()):
-        print("Five minutes")
+        logger.info("Start check")
         error = runningCheck(switches, mibsList, lassErrorsPort)
         errorInsert(error)
         print(error)
         twoError.update(error)
+    logger.info("End of the check every 5 minutes")
 
 
 def twoMinutesMain():
-    global huta, twoError, noSendingErrorToMail, noSendingErrorToDatabase
+    global huta, twoError, noSendingErrorToMail, noSendingErrorToDatabase, logger
     errorTemp = twoError
     twoError = {}
+    logger.info("Start of the check every 2 minutes")
     if len(errorTemp.keys()):
         try:
+            logger.info("Start of getting data from the database")
             switches = huta.getSwitches()
             mibsList = huta.getMibs()
             lassErrorsPort = huta.getPortError()
         except Exception as e:
-            print(e)
-            print("Ошибка получения данных из базы данных")
+            logger.error("Error getting data from the database")
+            logger.error(e)
             return
+        else:
+            logger.info("Successful of getting data from the database")
+
         switches = {
             key: val for key, val in switches.items() if key in errorTemp.keys()
         }
@@ -433,7 +496,7 @@ def twoMinutesMain():
         }
         mibsList = {key: val for key, val in mibsList.items() if key in switches.keys()}
         if len(switches.keys()):
-            print("Two minutes")
+            logger.info("Start check")
             errors = runningCheck(switches, mibsList, lassErrorsPort)
             huta.deleteError(list(errorTemp.keys() - errors.keys()))
             print(errors)
@@ -443,21 +506,28 @@ def twoMinutesMain():
                 + list(noSendingErrorToMail.keys())
             ):
                 errorInsert({})
+
+    logger.info("End of the check every 2 minutes")
 
 
 def oneMinutesMain():
     global huta, oneError
     errorTemp = oneError
     oneError = {}
+    logger.info("Start of the check every 1 minutes")
     if len(errorTemp.keys()):
         try:
+            logger.info("Start of getting data from the database")
             switches = huta.getSwitches()
             mibsList = huta.getMibs()
             lassErrorsPort = huta.getPortError()
         except Exception as e:
-            print(e)
-            print("Ошибка получения данных из базы данных")
+            logger.error("Error getting data from the database")
+            logger.error(e)
             return
+        else:
+            logger.info("Successful of getting data from the database")
+
         switches = {
             key: val for key, val in switches.items() if key in errorTemp.keys()
         }
@@ -466,7 +536,7 @@ def oneMinutesMain():
             key: val for key, val in lassErrorsPort.items() if key in switches.keys()
         }
         if len(switches.keys()):
-            print("One minutes")
+            logger.info("Start check")
             errors = runningCheck(switches, mibsList, lassErrorsPort)
             huta.deleteError(list(errorTemp.keys() - errors.keys()))
             print(errors)
@@ -476,12 +546,20 @@ def oneMinutesMain():
                 + list(noSendingErrorToMail.keys())
             ):
                 errorInsert({})
+    logger.info("End of the check every 1 minutes")
 
 
 def startProgramm():
-    global huta, oneError, typeErrorList
-    oneError = huta.getDeviceError()
-    typeErrorList = huta.getTypeError()
+    global huta, oneError, typeErrorList, logger
+    try:
+        logger.info("Start of receiving initial data")
+        oneError = huta.getDeviceError()
+        typeErrorList = huta.getTypeError()
+    except Exception as e:
+        logger.error("Initial data acquisition error")
+        logger.error(e)
+    else:
+        logger.info("Successful of receiving initial data")
 
 
 if __name__ == "__main__":
