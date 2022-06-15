@@ -1,3 +1,4 @@
+import datetime
 import smtplib
 from config import mailConf
 
@@ -12,13 +13,16 @@ class mailClient:
     def sendEmailError(self, typeErrorList, errorList):
         if len(errorList) == 0:
             return
-        text = ""
+        text = f"Дата: {str(datetime.datetime.now())}"
         for swt in errorList:
-            text = text + f"\r\nСвитч с IP-адресом: {errorList[swt][0]['ip']}. Ошибки:"
+            text = (
+                text
+                + f"\r\nСвитч: Имя:{errorList[swt][0]['name_switches']} IP-адресом: {errorList[swt][0]['ip']} Ошибки:"
+            )
             for el in errorList[swt]:
                 text = (
                     text
-                    + f"\r\n\t--Тип: {typeErrorList[el['typeEr'].value]}. {'Описание: ' + el['description'] if el['description'] != 'null' else ''}"
+                    + f"\r\n\t--Тип ошибки: {typeErrorList[el['typeEr'].value]}. {'Описание: ' + el['description'] if el['description'] != 'null' else ''}"
                 )
         for toEmail in mailConf["to"]:
             body = "\r\n".join(

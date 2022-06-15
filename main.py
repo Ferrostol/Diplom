@@ -76,6 +76,7 @@ async def request(switch, switches, mib, lassErrorsPort):
                 "typeEr": TYPE_ERROR.SNMP_ERROR,
                 "ip": switches[switch]["ip"],
                 "description": "null",
+                "name_switches": switches["switches_name"],
             }
         ]
         if not mib["proc"] in (None, ""):
@@ -98,6 +99,7 @@ async def request(switch, switches, mib, lassErrorsPort):
                                     "typeEr": TYPE_ERROR.CPU_LOAD,
                                     "ip": switches["ip"],
                                     "description": f"Загрузка процессора более {LIMIT.MAX_CPU_LOAD}%. = {rezult}%",
+                                    "name_switches": switches["switches_name"],
                                 }
                             )
                         else:
@@ -106,6 +108,7 @@ async def request(switch, switches, mib, lassErrorsPort):
                                     "typeEr": TYPE_ERROR.CPU_LOAD,
                                     "ip": switches["ip"],
                                     "description": f"Загрузка процессора более {LIMIT.MAX_CPU_LOAD}%. = {rezult}%",
+                                    "name_switches": switches["switches_name"],
                                 }
                             ]
             except exceptions.SnmpTimeoutError:
@@ -115,6 +118,7 @@ async def request(switch, switches, mib, lassErrorsPort):
                             "typeEr": TYPE_ERROR.HOST_UNKNOWN,
                             "ip": switches["ip"],
                             "description": "null",
+                            "name_switches": switches["switches_name"],
                         }
                     )
                 else:
@@ -123,6 +127,7 @@ async def request(switch, switches, mib, lassErrorsPort):
                             "typeEr": TYPE_ERROR.HOST_UNKNOWN,
                             "ip": switches["ip"],
                             "description": "null",
+                            "name_switches": switches["switches_name"],
                         }
                     ]
                 if not mib["proc"] in (None, ""):
@@ -144,6 +149,7 @@ async def request(switch, switches, mib, lassErrorsPort):
                                     "typeEr": TYPE_ERROR.TEMPERATURE,
                                     "ip": switches["ip"],
                                     "description": f"Температура датчика {i} более {LIMIT.MAX_TEMPERATURE}%. = {rezult} C",
+                                    "name_switches": switches["switches_name"],
                                 }
                             )
                         else:
@@ -152,6 +158,7 @@ async def request(switch, switches, mib, lassErrorsPort):
                                     "typeEr": TYPE_ERROR.TEMPERATURE,
                                     "ip": switches["ip"],
                                     "description": f"Температура датчика {i} более {LIMIT.MAX_TEMPERATURE}%. = {rezult} C",
+                                    "name_switches": switches["switches_name"],
                                 }
                             ]
                     i = i + 1
@@ -162,6 +169,7 @@ async def request(switch, switches, mib, lassErrorsPort):
                             "typeEr": TYPE_ERROR.HOST_UNKNOWN,
                             "ip": switches["ip"],
                             "description": "null",
+                            "name_switches": switches["switches_name"],
                         }
                     )
                 else:
@@ -170,6 +178,7 @@ async def request(switch, switches, mib, lassErrorsPort):
                             "typeEr": TYPE_ERROR.HOST_UNKNOWN,
                             "ip": switches["ip"],
                             "description": "null",
+                            "name_switches": switches["switches_name"],
                         }
                     ]
                 if not mib["temp"] in (None, ""):
@@ -222,6 +231,7 @@ async def request(switch, switches, mib, lassErrorsPort):
                                 "typeEr": TYPE_ERROR.PORT_LOAD,
                                 "ip": switches["ip"],
                                 "description": f"Ошибки на входе порта {int(str(port)[-4:])} появилось {valueIn} ошибок",
+                                "name_switches": switches["switches_name"],
                             }
                         )
                     else:
@@ -230,6 +240,7 @@ async def request(switch, switches, mib, lassErrorsPort):
                                 "typeEr": TYPE_ERROR.PORT_LOAD,
                                 "ip": switches["ip"],
                                 "description": f"Ошибки на входе порта {int(str(port)[-4:])} появилось {valueIn} ошибок",
+                                "name_switches": switches["switches_name"],
                             }
                         ]
                 if valueOut > 0:
@@ -239,6 +250,7 @@ async def request(switch, switches, mib, lassErrorsPort):
                                 "typeEr": TYPE_ERROR.PORT_LOAD,
                                 "ip": switches["ip"],
                                 "description": f"Ошибки на выходе порта {int(str(port)[-4:])} появилось {valueOut} ошибок",
+                                "name_switches": switches["switches_name"],
                             }
                         )
                     else:
@@ -247,6 +259,7 @@ async def request(switch, switches, mib, lassErrorsPort):
                                 "typeEr": TYPE_ERROR.PORT_LOAD,
                                 "ip": switches["ip"],
                                 "description": f"Ошибки на выходе порта {int(str(port)[-4:])} появилось {valueOut} ошибок",
+                                "name_switches": switches["switches_name"],
                             }
                         ]
         except exceptions.SnmpTimeoutError:
@@ -256,6 +269,7 @@ async def request(switch, switches, mib, lassErrorsPort):
                         "typeEr": TYPE_ERROR.HOST_UNKNOWN,
                         "ip": switches["ip"],
                         "description": "null",
+                        "name_switches": switches["switches_name"],
                     }
                 )
             else:
@@ -264,6 +278,7 @@ async def request(switch, switches, mib, lassErrorsPort):
                         "typeEr": TYPE_ERROR.HOST_UNKNOWN,
                         "ip": switches["ip"],
                         "description": "null",
+                        "name_switches": switches["switches_name"],
                     }
                 ]
 
@@ -386,6 +401,7 @@ def pingList(switches, mibsList):
                     "typeEr": TYPE_ERROR.HOST_UNKNOWN,
                     "ip": switches[switch]["ip"],
                     "description": "null",
+                    "name_switches": switches["switches_name"],
                 }
             ]
             if not mibsList[switch]["proc"] in (None, ""):
