@@ -102,18 +102,18 @@ async def request(switch, switches, mib, lassErrorsPort):
                 if switch in errors:
                     errors[switch].append(
                         {
-                            "typeEr": TYPE_ERROR.HOST_UNKNOWN,
+                            "typeEr": TYPE_ERROR.SNMP_ERROR,
                             "ip": switches["ip"],
-                            "description": "null",
+                            "description": "При проверке процессора",
                             "name_switches": switches["switches_name"],
                         }
                     )
                 else:
                     errors[switch] = [
                         {
-                            "typeEr": TYPE_ERROR.HOST_UNKNOWN,
+                            "typeEr": TYPE_ERROR.SNMP_ERROR,
                             "ip": switches["ip"],
-                            "description": "null",
+                            "description": "При проверке процессора",
                             "name_switches": switches["switches_name"],
                         }
                     ]
@@ -153,18 +153,18 @@ async def request(switch, switches, mib, lassErrorsPort):
                 if switch in errors:
                     errors[switch].append(
                         {
-                            "typeEr": TYPE_ERROR.HOST_UNKNOWN,
+                            "typeEr": TYPE_ERROR.SNMP_ERROR,
                             "ip": switches["ip"],
-                            "description": "null",
+                            "description": "При проверке температуры",
                             "name_switches": switches["switches_name"],
                         }
                     )
                 else:
                     errors[switch] = [
                         {
-                            "typeEr": TYPE_ERROR.HOST_UNKNOWN,
+                            "typeEr": TYPE_ERROR.SNMP_ERROR,
                             "ip": switches["ip"],
-                            "description": "null",
+                            "description": "При проверке температуры",
                             "name_switches": switches["switches_name"],
                         }
                     ]
@@ -269,18 +269,18 @@ async def request(switch, switches, mib, lassErrorsPort):
             if switch in errors:
                 errors[switch].append(
                     {
-                        "typeEr": TYPE_ERROR.HOST_UNKNOWN,
+                        "typeEr": TYPE_ERROR.SNMP_ERROR,
                         "ip": switches["ip"],
-                        "description": "null",
+                        "description": "При проверке портов",
                         "name_switches": switches["switches_name"],
                     }
                 )
             else:
                 errors[switch] = [
                     {
-                        "typeEr": TYPE_ERROR.HOST_UNKNOWN,
+                        "typeEr": TYPE_ERROR.SNMP_ERROR,
                         "ip": switches["ip"],
-                        "description": "null",
+                        "description": "При проверке портов",
                         "name_switches": switches["switches_name"],
                     }
                 ]

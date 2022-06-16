@@ -21,7 +21,7 @@ class database(object):
         sql = "select * from errorlist"
         cursor = self.connect.cursor()
         cursor.execute(sql)
-        swt = self.cursor.fetchall()
+        swt = cursor.fetchall()
         swww = {el[0]: el[1] for el in swt}
         cursor.close()
         return swww
@@ -31,7 +31,7 @@ class database(object):
         cursor = self.connect.cursor()
         cursor.execute(sql)
         swww = {}
-        swt = self.cursor.fetchall()
+        swt = cursor.fetchall()
         for el in swt:
             swww[el[0]] = {
                 "switches_name": el[1],
@@ -47,7 +47,7 @@ class database(object):
         cursor = self.connect.cursor()
         cursor.execute(sql)
         swww = {}
-        swt = self.cursor.fetchall()
+        swt = cursor.fetchall()
         for el in swt:
             swww[el[0]] = {
                 "community": el[1],
@@ -63,7 +63,7 @@ class database(object):
         cursor = self.connect.cursor()
         cursor.execute(sql)
         swww = {}
-        swt = self.cursor.fetchall()
+        swt = cursor.fetchall()
         for el in swt:
             if el in swww:
                 swww[el[0]].append(
@@ -85,7 +85,7 @@ class database(object):
         cursor = self.connect.cursor()
         cursor.execute(sql)
         swww = {}
-        swt = self.cursor.fetchall()
+        swt = cursor.fetchall()
         for el in swt:
             if not el[0] in swww:
                 swww.update({el[0]: {el[1]: [el[2], el[3]]}})

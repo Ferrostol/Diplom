@@ -58,7 +58,7 @@ class mailClient:
                 elif el["typeEr"] == TYPE_ERROR.SNMP_ERROR:
                     textEmail = (
                         textEmail
-                        + f"\r\n\t--Тип ошибки: {typeErrorList[el['typeEr'].value]}."
+                        + f"\r\n\t--Тип ошибки: {typeErrorList[el['typeEr'].value]}. Описание: {el['description']}"
                     )
                     textSMS = textSMS + f"\r\n\t--{typeErrorList[el['typeEr'].value]}."
 
@@ -116,6 +116,9 @@ class mailClient:
 
                 elif typeEr == TYPE_ERROR.TEMPERATURE:
                     textEmail = textEmail + f"\r\n\t--Температура нормализовалась."
+
+                elif typeEr == TYPE_ERROR.SNMP_ERROR:
+                    textEmail = textEmail + f"\r\n\t--Работа SNMP нормализовалась."
 
         for toEmail in mailConf["toEmail"]:
             body = "\r\n".join(
