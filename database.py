@@ -1,5 +1,5 @@
 import psycopg2
-from config import databaseConf
+from config import databaseConf, TYPE_ERROR
 
 
 class database(object):
@@ -63,9 +63,18 @@ class database(object):
         swww = {}
         swt = self.cursor.fetchall()
         for el in swt:
-            swww[el[0]] = {
-                "id_err_info": el[1],
-            }
+            if el in swww:
+                swww[el[0]].append(
+                    {
+                        "typeEr": [eel for eel in TYPE_ERROR if eel.value == el[1]][0],
+                    }
+                )
+            else:
+                swww[el[0]] = [
+                    {
+                        "typeEr": [eel for eel in TYPE_ERROR if eel.value == el[1]][0],
+                    }
+                ]
         return swww
 
     def getPortError(self):
@@ -131,14 +140,15 @@ class database(object):
             return
         sql = (
             "delete from error where id_swit in ("
-            + ",".join([str(el[0]) for el in deleteMass if len(el) == 1])
+            + ",".join([str(el) for el in deleteMass if len(deleteMass[el]) == 1])
             + ");"
         )
         sql = sql + " ".join(
             [
-                f"delete from error where id_swit = {str(el[0])} and id_err_info = {str(el[1])};"
+                f"delete from error where id_swit = {str(el)} and id_err_info = {ell.value};"
                 for el in deleteMass
-                if len(deleteMass) == 2
+                if len(deleteMass[el]) != 1
+                for ell in deleteMass[el]
             ]
         )
         self.cursor.execute(sql)

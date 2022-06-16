@@ -16,7 +16,7 @@ class mailClient:
         for swt in errorList:
             textEmail = (
                 textEmail
-                + f"\r\Имя:{errorList[swt][0]['name_switches']} IP-адресом: {errorList[swt][0]['ip']} Ошибки:"
+                + f"\r\nИмя:{errorList[swt][0]['name_switches']} IP-адресом: {errorList[swt][0]['ip']} Ошибки:"
             )
             textSMS = textEmail
             for el in errorList[swt]:
@@ -96,17 +96,16 @@ class mailClient:
         self.smtp = smtplib.SMTP(mailConf["server"], mailConf["port"])
         self.charset = "Content-Type: text/plain; charset=utf-8"
         self.mime = "MIME-Version: 1.0"
-        self.subject = "Ошибки работы оборудования"
+        self.subject = "Восстановление работы оборудования"
         if len(deleteMass) == 0:
             return
         textEmail = f"Дата: {str(datetime.datetime.now())}"
         for swt in deleteMass:
             textEmail = (
                 textEmail
-                + f"\r\Имя:{switches[swt]['switches_name']} IP-адресом: {switches[swt]['ip']} Ошибки:"
+                + f"\r\nИмя:{switches[swt]['switches_name']} IP-адресом: {switches[swt]['ip']}:"
             )
             for typeEr in deleteMass[swt]:
-
                 if typeEr == TYPE_ERROR.HOST_UNKNOWN:
                     textEmail = textEmail + f"\r\n\t--Соединение восстановлено."
 

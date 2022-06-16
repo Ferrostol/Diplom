@@ -341,6 +341,11 @@ def errorInsert(errorList):
         logger.info("Start sending error information to the database")
         try:
             huta.addNewError(massError)
+        except OperationalError as e:
+            logger.error("Error sending error information to the database")
+            logger.error(e)
+            huta = database()
+            noSendingErrorToDatabase = errorList
         except Exception as e:
             logger.error("Error sending error information to the database")
             logger.error(e)
@@ -359,7 +364,7 @@ def errorInsert(errorList):
     if len(errorListMail.keys()):
         logger.info("Start sending error information to email")
         try:
-            mailClient.sendEmailError(typeErrorList, errorListMail)
+            mailClient().sendEmailError(typeErrorList, errorListMail)
         except Exception as e:
             logger.error("Error sending error information to email")
             logger.error(e)
@@ -420,16 +425,16 @@ def errorCorrectionCheck(oldError: dict, newError: dict):
     deleteMass = {}
     for swtOld in oldError:
         if not swtOld in newError:
-            deleteMass[swtOld] = oldError[swtOld]
+            ls = list(set([el["typeEr"] for el in oldError[swtOld] if "typeEr" in el]))
         else:
             ls = list(
-                list(set([el["typeEr"] for el in oldError[swtOld]]))
-                - list(set([el["typeEr"] for el in newError[swtOld]]))
+                set([el["typeEr"] for el in oldError[swtOld] if "typeEr" in el])
+                - set([el["typeEr"] for el in newError[swtOld] if "typeEr" in el])
             )
-            if len(ls):
-                deleteMass[swtOld] = []
-                for typeEr in ls:
-                    deleteMass[swtOld].append(typeEr)
+        if len(ls):
+            deleteMass[swtOld] = []
+            for typeEr in ls:
+                deleteMass[swtOld].append(typeEr)
     return deleteMass
 
 
@@ -447,6 +452,12 @@ def runningCheck(switches, mibsList, lassErrorsPort, errorTemp):
         try:
             huta.addPortStat(portStat)
             huta.updateLastPortError(lastValuePortError)
+        except OperationalError as e:
+            logger.error("Error sending statistics by ports to the database")
+            logger.error(e)
+            huta = database()
+            huta.addPortStat(portStat)
+            huta.updateLastPortError(lastValuePortError)
         except Exception as e:
             logger.error("Error sending statistics by ports to the database")
             logger.error(e)
@@ -455,6 +466,11 @@ def runningCheck(switches, mibsList, lassErrorsPort, errorTemp):
 
     logger.info("Start sending statistics to the database by processor")
     try:
+        huta.addProcStat(procStat)
+    except OperationalError as e:
+        logger.error("Error sending statistics by processor to the database")
+        logger.error(e)
+        huta = database()
         huta.addProcStat(procStat)
     except Exception as e:
         logger.error("Error sending statistics by processor to the database")
@@ -465,6 +481,11 @@ def runningCheck(switches, mibsList, lassErrorsPort, errorTemp):
     logger.info("Start sending statistics to the database by temperature")
     try:
         huta.addTempStat(tempStat)
+    except OperationalError as e:
+        logger.error("Error sending statistics by temperature to the database")
+        logger.error(e)
+        huta = database()
+        huta.addTempStat(tempStat)
     except Exception as e:
         logger.error("Error sending statistics by temperature to the database")
         logger.error(e)
@@ -473,8 +494,28 @@ def runningCheck(switches, mibsList, lassErrorsPort, errorTemp):
 
     deleteMass = errorCorrectionCheck(errorTemp, errors)
     if len(deleteMass):
-        huta.deleteError(deleteMass)
-        mailClient.sendEmailCorrecionError(deleteMass, switches)
+        logger.info("Start deleting errors from the database")
+        try:
+            huta.deleteError(deleteMass)
+        except OperationalError as e:
+            logger.error("Error deleting errors from the database")
+            logger.error(e)
+            huta = database()
+            huta.deleteError(deleteMass)
+        except Exception as e:
+            logger.error("Error deleting errors from the database")
+            logger.error(e)
+        else:
+            logger.info("End deleting errors from the database")
+
+        logger.info("Start sending a message about restoring health")
+        try:
+            mailClient().sendEmailCorrecionError(deleteMass, switches)
+        except Exception as e:
+            logger.error("Error sending a message about restoring health")
+            logger.error(e)
+        else:
+            logger.info("End sending a message about restoring health")
 
     return errors
 

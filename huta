@@ -5,7 +5,7 @@
 name=huta
 rcvar=huta_enable
 pidfile=/var/run/${name}.pid
-echodate_user=ferrostol
+echodate_user=root
 
 command="/usr/home/ferrostol/huta-diplom/main.py";
 
