@@ -126,13 +126,20 @@ class database(object):
         self.cursor.execute(sql)
         self.connect.commit()
 
-    def deleteError(self, devices):
-        if len(devices) == 0:
+    def deleteError(self, deleteMass):
+        if len(deleteMass) == 0:
             return
         sql = (
             "delete from error where id_swit in ("
-            + ",".join([str(el) for el in devices])
+            + ",".join([str(el[0]) for el in deleteMass if len(el) == 1])
             + ");"
+        )
+        sql = sql + " ".join(
+            [
+                f"delete from error where id_swit = {str(el[0])} and id_err_info = {str(el[1])};"
+                for el in deleteMass
+                if len(deleteMass) == 2
+            ]
         )
         self.cursor.execute(sql)
         self.connect.commit()

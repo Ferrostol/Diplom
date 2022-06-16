@@ -1,4 +1,5 @@
 #!/usr/local/bin/python3
+from distutils.dep_util import newer
 import logging
 import time  # Библиотека для работы со временем
 import subprocess  # Библиотека для работы с процессами ОС
@@ -15,12 +16,9 @@ from config import TYPE_ERROR, LIMIT
 
 logger = logging.getLogger("mainFile")
 logger.setLevel(logging.INFO)
-
 fh = logging.FileHandler("huta.log")
-
 formatter = logging.Formatter("%(asctime)s - %(name)s - %(levelname)s - %(message)s")
 fh.setFormatter(formatter)
-
 logger.addHandler(fh)
 
 logger.info("Program started")
@@ -35,17 +33,6 @@ except OperationalError as e:
     exit()
 else:
     logger.info("Successful connection to database")
-
-try:
-    logger.info("Start of initialization of the SMTP mail client")
-    mails = mailClient()
-except Exception as e:
-    logger.error("Mail SMTP client initialization error")
-    logger.error(e)
-    logger.warning("Program ended")
-    exit()
-else:
-    logger.info("Successful of initialization of the SMTP mail client")
 
 twoError = {}  # Ошибки которые надо проверить за 2 минут
 oneError = {}  # Ошибки которые надо проверить за 1 минут
@@ -98,7 +85,7 @@ async def request(switch, switches, mib, lassErrorsPort):
                                 {
                                     "typeEr": TYPE_ERROR.CPU_LOAD,
                                     "ip": switches["ip"],
-                                    "description": f"Загрузка процессора более {LIMIT.MAX_CPU_LOAD}%. = {rezult}%",
+                                    "description": rezult,
                                     "name_switches": switches["switches_name"],
                                 }
                             )
@@ -107,7 +94,7 @@ async def request(switch, switches, mib, lassErrorsPort):
                                 {
                                     "typeEr": TYPE_ERROR.CPU_LOAD,
                                     "ip": switches["ip"],
-                                    "description": f"Загрузка процессора более {LIMIT.MAX_CPU_LOAD}%. = {rezult}%",
+                                    "description": rezult,
                                     "name_switches": switches["switches_name"],
                                 }
                             ]
@@ -148,7 +135,7 @@ async def request(switch, switches, mib, lassErrorsPort):
                                 {
                                     "typeEr": TYPE_ERROR.TEMPERATURE,
                                     "ip": switches["ip"],
-                                    "description": f"Температура датчика {i} более {LIMIT.MAX_TEMPERATURE}%. = {rezult} C",
+                                    "description": [i, rezult],
                                     "name_switches": switches["switches_name"],
                                 }
                             )
@@ -157,7 +144,7 @@ async def request(switch, switches, mib, lassErrorsPort):
                                 {
                                     "typeEr": TYPE_ERROR.TEMPERATURE,
                                     "ip": switches["ip"],
-                                    "description": f"Температура датчика {i} более {LIMIT.MAX_TEMPERATURE}%. = {rezult} C",
+                                    "description": [i, rezult],
                                     "name_switches": switches["switches_name"],
                                 }
                             ]
@@ -230,7 +217,11 @@ async def request(switch, switches, mib, lassErrorsPort):
                             {
                                 "typeEr": TYPE_ERROR.PORT_LOAD,
                                 "ip": switches["ip"],
-                                "description": f"Ошибки на входе порта {int(str(port)[-4:])} появилось {valueIn} ошибок",
+                                "description": [
+                                    "входе",
+                                    {int(str(port)[-4:])},
+                                    valueIn,
+                                ],
                                 "name_switches": switches["switches_name"],
                             }
                         )
@@ -239,7 +230,11 @@ async def request(switch, switches, mib, lassErrorsPort):
                             {
                                 "typeEr": TYPE_ERROR.PORT_LOAD,
                                 "ip": switches["ip"],
-                                "description": f"Ошибки на входе порта {int(str(port)[-4:])} появилось {valueIn} ошибок",
+                                "description": [
+                                    "входе",
+                                    {int(str(port)[-4:])},
+                                    valueIn,
+                                ],
                                 "name_switches": switches["switches_name"],
                             }
                         ]
@@ -249,7 +244,11 @@ async def request(switch, switches, mib, lassErrorsPort):
                             {
                                 "typeEr": TYPE_ERROR.PORT_LOAD,
                                 "ip": switches["ip"],
-                                "description": f"Ошибки на выходе порта {int(str(port)[-4:])} появилось {valueOut} ошибок",
+                                "description": [
+                                    "выходе",
+                                    {int(str(port)[-4:])},
+                                    valueOut,
+                                ],
                                 "name_switches": switches["switches_name"],
                             }
                         )
@@ -258,7 +257,11 @@ async def request(switch, switches, mib, lassErrorsPort):
                             {
                                 "typeEr": TYPE_ERROR.PORT_LOAD,
                                 "ip": switches["ip"],
-                                "description": f"Ошибки на выходе порта {int(str(port)[-4:])} появилось {valueOut} ошибок",
+                                "description": [
+                                    "выходе",
+                                    {int(str(port)[-4:])},
+                                    valueOut,
+                                ],
                                 "name_switches": switches["switches_name"],
                             }
                         ]
@@ -321,7 +324,7 @@ def check(switch_list, mibsList, lassErrorsPort):
 
 
 def errorInsert(errorList):
-    global huta, mails, twoError, oneError, noSendingErrorToMail, noSendingErrorToDatabase, logger
+    global huta, twoError, oneError, noSendingErrorToMail, noSendingErrorToDatabase, logger
     logger.info("Start sending error information")
     massError = []
     errorListMail = errorList
@@ -356,7 +359,7 @@ def errorInsert(errorList):
     if len(errorListMail.keys()):
         logger.info("Start sending error information to email")
         try:
-            mails.sendEmailError(typeErrorList, errorListMail)
+            mailClient.sendEmailError(typeErrorList, errorListMail)
         except Exception as e:
             logger.error("Error sending error information to email")
             logger.error(e)
@@ -375,6 +378,7 @@ def ping(ip):
     if rez == 0:
         return True
     else:
+        time.sleep(0.2)
         rez = subprocess.run(
             ["ping", "-c", "3", "-t", "1", ip], stdout=subprocess.DEVNULL
         ).returncode
@@ -401,7 +405,7 @@ def pingList(switches, mibsList):
                     "typeEr": TYPE_ERROR.HOST_UNKNOWN,
                     "ip": switches[switch]["ip"],
                     "description": "null",
-                    "name_switches": switches["switches_name"],
+                    "name_switches": switches[switch]["switches_name"],
                 }
             ]
             if not mibsList[switch]["proc"] in (None, ""):
@@ -412,8 +416,25 @@ def pingList(switches, mibsList):
     return (temp, errors, procStat, tempStat)
 
 
-def runningCheck(switches, mibsList, lassErrorsPort):
-    global logger
+def errorCorrectionCheck(oldError: dict, newError: dict):
+    deleteMass = {}
+    for swtOld in oldError:
+        if not swtOld in newError:
+            deleteMass[swtOld] = oldError[swtOld]
+        else:
+            ls = list(
+                list(set([el["typeEr"] for el in oldError[swtOld]]))
+                - list(set([el["typeEr"] for el in newError[swtOld]]))
+            )
+            if len(ls):
+                deleteMass[swtOld] = []
+                for typeEr in ls:
+                    deleteMass[swtOld].append(typeEr)
+    return deleteMass
+
+
+def runningCheck(switches, mibsList, lassErrorsPort, errorTemp):
+    global logger, huta
     onSwitches, errors, procStat, tempStat = pingList(switches, mibsList)
     if len(onSwitches.keys()):
         err, proc, temp, portStat, lastValuePortError = check(
@@ -450,6 +471,11 @@ def runningCheck(switches, mibsList, lassErrorsPort):
     else:
         logger.info("End sending statistics to the database by temperature")
 
+    deleteMass = errorCorrectionCheck(errorTemp, errors)
+    if len(deleteMass):
+        huta.deleteError(deleteMass)
+        mailClient.sendEmailCorrecionError(deleteMass, switches)
+
     return errors
 
 
@@ -479,9 +505,8 @@ def fiveMinutesMain():
     }
     if len(switches.keys()):
         logger.info("Start check")
-        error = runningCheck(switches, mibsList, lassErrorsPort)
+        error = runningCheck(switches, mibsList, lassErrorsPort, {})
         errorInsert(error)
-        print(error)
         twoError.update(error)
     logger.info("End of the check every 5 minutes")
 
@@ -513,9 +538,7 @@ def twoMinutesMain():
         mibsList = {key: val for key, val in mibsList.items() if key in switches.keys()}
         if len(switches.keys()):
             logger.info("Start check")
-            errors = runningCheck(switches, mibsList, lassErrorsPort)
-            huta.deleteError(list(errorTemp.keys() - errors.keys()))
-            print(errors)
+            errors = runningCheck(switches, mibsList, lassErrorsPort, errorTemp)
             oneError.update(errors)
             if len(
                 list(noSendingErrorToDatabase.keys())
@@ -553,9 +576,7 @@ def oneMinutesMain():
         }
         if len(switches.keys()):
             logger.info("Start check")
-            errors = runningCheck(switches, mibsList, lassErrorsPort)
-            huta.deleteError(list(errorTemp.keys() - errors.keys()))
-            print(errors)
+            errors = runningCheck(switches, mibsList, lassErrorsPort, errorTemp)
             oneError.update(errors)
             if len(
                 list(noSendingErrorToDatabase.keys())
