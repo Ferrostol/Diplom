@@ -5,7 +5,6 @@ from config import databaseConf, TYPE_ERROR
 class database(object):
     def __init__(self):
         self.getConnect()
-        self.getCursor()
 
     def getConnect(self):
         self.connect = psycopg2.connect(
@@ -15,23 +14,22 @@ class database(object):
             host=databaseConf["host"],
         )
 
-    def getCursor(self):
-        self.cursor = self.connect.cursor()
-
     def __del__(self):
-        self.cursor.close()
         self.connect.close()
 
     def getTypeError(self):
         sql = "select * from errorlist"
-        self.cursor.execute(sql)
+        cursor = self.connect.cursor()
+        cursor.execute(sql)
         swt = self.cursor.fetchall()
         swww = {el[0]: el[1] for el in swt}
+        cursor.close()
         return swww
 
     def getSwitches(self):
         sql = "select switches.id, switches.name, ip, port, model.name from switches join model on model.id=switches.model_id where status=true"
-        self.cursor.execute(sql)
+        cursor = self.connect.cursor()
+        cursor.execute(sql)
         swww = {}
         swt = self.cursor.fetchall()
         for el in swt:
@@ -41,11 +39,13 @@ class database(object):
                 "port": el[3],
                 "model_name": el[4],
             }
+        cursor.close()
         return swww
 
     def getMibs(self):
         sql = "select switches_id, community, proc, idleProc, temp from switches left join mibsList on mibsList.switches_id=switches.id where status=true"
-        self.cursor.execute(sql)
+        cursor = self.connect.cursor()
+        cursor.execute(sql)
         swww = {}
         swt = self.cursor.fetchall()
         for el in swt:
@@ -55,11 +55,13 @@ class database(object):
                 "idleProc": el[3],
                 "temp": el[4],
             }
+        cursor.close()
         return swww
 
     def getDeviceError(self):
         sql = f"select switches.id, id_err_info from switches join model on model.id=switches.model_id join error on error.id_swit=switches.id where status=true"
-        self.cursor.execute(sql)
+        cursor = self.connect.cursor()
+        cursor.execute(sql)
         swww = {}
         swt = self.cursor.fetchall()
         for el in swt:
@@ -75,11 +77,13 @@ class database(object):
                         "typeEr": [eel for eel in TYPE_ERROR if eel.value == el[1]][0],
                     }
                 ]
+        cursor.close()
         return swww
 
     def getPortError(self):
         sql = f"select switches.id, num_port, error_in, error_out from switches join lastporterror on lastporterror.switches_id=switches.id where status=true"
-        self.cursor.execute(sql)
+        cursor = self.connect.cursor()
+        cursor.execute(sql)
         swww = {}
         swt = self.cursor.fetchall()
         for el in swt:
@@ -87,6 +91,7 @@ class database(object):
                 swww.update({el[0]: {el[1]: [el[2], el[3]]}})
             else:
                 swww[el[0]].update({el[1]: [el[2], el[3]]})
+        cursor.close()
         return swww
 
     def addProcStat(self, procStat):
@@ -97,8 +102,10 @@ class database(object):
             + ",".join([f"({stat[0]},{stat[1]})" for stat in procStat])
             + ";"
         )
-        self.cursor.execute(sql)
+        cursor = self.connect.cursor()
+        cursor.execute(sql)
         self.connect.commit()
+        cursor.close()
 
     def addTempStat(self, tempStat):
         if len(tempStat) == 0:
@@ -108,8 +115,10 @@ class database(object):
             + ",".join([f"({stat[0]},{stat[1]},{stat[2]})" for stat in tempStat])
             + ";"
         )
-        self.cursor.execute(sql)
+        cursor = self.connect.cursor()
+        cursor.execute(sql)
         self.connect.commit()
+        cursor.close()
 
     def addPortStat(self, portStat):
         sql = (
@@ -119,8 +128,10 @@ class database(object):
             )
             + ";"
         )
-        self.cursor.execute(sql)
+        cursor = self.connect.cursor()
+        cursor.execute(sql)
         self.connect.commit()
+        cursor.close()
 
     def addNewError(self, errors):
         if len(errors) == 0:
@@ -132,8 +143,10 @@ class database(object):
             )
             + ";"
         )
-        self.cursor.execute(sql)
+        cursor = self.connect.cursor()
+        cursor.execute(sql)
         self.connect.commit()
+        cursor.close()
 
     def deleteError(self, deleteMass):
         if len(deleteMass) == 0:
@@ -151,8 +164,10 @@ class database(object):
                 for ell in deleteMass[el]
             ]
         )
-        self.cursor.execute(sql)
+        cursor = self.connect.cursor()
+        cursor.execute(sql)
         self.connect.commit()
+        cursor.close()
 
     def updateLastPortError(self, lassErrorsPort):
         if len(lassErrorsPort.keys()) == 0:
@@ -164,5 +179,7 @@ class database(object):
                 for port in lassErrorsPort[switch]
             ]
         )
-        self.cursor.execute(sql)
+        cursor = self.connect.cursor()
+        cursor.execute(sql)
         self.connect.commit()
+        cursor.close()
