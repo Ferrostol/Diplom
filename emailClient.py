@@ -20,7 +20,6 @@ class mailClient:
             )
             textSMS = textEmail
             for el in errorList[swt]:
-
                 if el["typeEr"] == TYPE_ERROR.HOST_UNKNOWN:
                     textEmail = (
                         textEmail
@@ -38,7 +37,7 @@ class mailClient:
                 elif el["typeEr"] == TYPE_ERROR.TEMPERATURE:
                     textEmail = (
                         textEmail
-                        + f"\r\n\t--Тип ошибки: {typeErrorList[el['typeEr'].value]}. Описание: Температура датчика {el['description'][0]} более {LIMIT.MAX_TEMPERATURE}%. = {el['description'][1]}C."
+                        + f"\r\n\t--Тип ошибки: {typeErrorList[el['typeEr'].value]}. Описание: Температура датчика {el['description'][0]} более {LIMIT.MAX_TEMPERATURE} C. = {el['description'][1]}C."
                     )
                     textSMS = (
                         textSMS
@@ -119,6 +118,9 @@ class mailClient:
 
                 elif typeEr == TYPE_ERROR.SNMP_ERROR:
                     textEmail = textEmail + f"\r\n\t--Работа SNMP нормализовалась."
+
+                elif typeEr == TYPE_ERROR.PORT_LOAD:
+                    textEmail = textEmail + f"\r\n\t--Работа портов нормализовалась."
 
         for toEmail in mailConf["toEmail"]:
             body = "\r\n".join(

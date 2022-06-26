@@ -121,6 +121,8 @@ class database(object):
         cursor.close()
 
     def addPortStat(self, portStat):
+        if len(portStat) == 0:
+            return
         sql = (
             "insert into statport (switches_id, num_port, error_in,error_out) values "
             + ",".join(

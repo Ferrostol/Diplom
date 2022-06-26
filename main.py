@@ -1,8 +1,8 @@
 #!/usr/local/bin/python3
-from distutils.dep_util import newer
 import logging
 import time  # Библиотека для работы со временем
 import subprocess  # Библиотека для работы с процессами ОС
+import os  # Бибилиотека для работы с ОС
 
 import asyncio  # Библиотека для асинхронного программирования
 from psycopg2 import OperationalError  # Импорт ошибки при работе с БД
@@ -16,7 +16,7 @@ from config import TYPE_ERROR, LIMIT
 
 logger = logging.getLogger("mainFile")
 logger.setLevel(logging.INFO)
-fh = logging.FileHandler("huta.log")
+fh = logging.FileHandler("/usr/home/ferrostol/huta.log")
 formatter = logging.Formatter("%(asctime)s - %(name)s - %(levelname)s - %(message)s")
 fh.setFormatter(formatter)
 logger.addHandler(fh)
@@ -119,6 +119,15 @@ async def request(switch, switches, mib, lassErrorsPort):
                     ]
                 if not mib["proc"] in (None, ""):
                     procStat.append([switch, "null"])
+                if not mib["temp"] in (None, ""):
+                    tempStat.append([switch, 0, "null"])
+                    return (
+                        errors,
+                        procStat,
+                        tempStat,
+                        portStat,
+                        {switch: lastValuePortError},
+                    )
             except Exception as e:
                 logger.error(f"Processor data acquisition error. {switches['ip']}")
                 logger.error(e)
@@ -170,12 +179,18 @@ async def request(switch, switches, mib, lassErrorsPort):
                     ]
                 if not mib["temp"] in (None, ""):
                     tempStat.append([switch, 0, "null"])
+                return (
+                    errors,
+                    procStat,
+                    tempStat,
+                    portStat,
+                    {switch: lastValuePortError},
+                )
             except Exception as e:
                 logger.error(f"Temperature data acquisition error. {switches['ip']}")
                 logger.error(e)
 
         try:
-            # Получаем какие порты являются портами для интернета
             massIndex = [
                 int(res.oid[str(res.oid).rindex(".") + 1 :])
                 for res in await snmp.bulk_walk("1.3.6.1.2.1.2.2.1.3")
@@ -319,7 +334,8 @@ def check(switch_list, mibsList, lassErrorsPort):
 
     lastValuePortError = {}
     for el in result[0]:
-        lastValuePortError.update(el.result()[4])
+        if len(list(dict(el.result()[4]).values())[0]):
+            lastValuePortError.update(el.result()[4])
     return (errors, procStat, tempStat, portStat, lastValuePortError)
 
 
@@ -334,6 +350,8 @@ def errorInsert(errorList):
             key: val for key, val in noSendingErrorToDatabase.items() if key in swtList
         }
         errorList.update(noSendingErrorToDatabase)
+        noSendingErrorToDatabase = {}
+
     for swt in errorList:
         for el in errorList[swt]:
             massError.append([swt, el["typeEr"], el["description"]])
@@ -349,9 +367,9 @@ def errorInsert(errorList):
         except Exception as e:
             logger.error("Error sending error information to the database")
             logger.error(e)
+            huta = database()
             noSendingErrorToDatabase = errorList
         else:
-            noSendingErrorToDatabase = {}
             logger.info("End sending error information to the database")
 
     if len(noSendingErrorToMail.keys()):
@@ -360,6 +378,7 @@ def errorInsert(errorList):
             key: val for key, val in noSendingErrorToMail.items() if key in swtList
         }
         errorListMail.update(noSendingErrorToMail)
+        noSendingErrorToMail = {}
 
     if len(errorListMail.keys()):
         logger.info("Start sending error information to email")
@@ -370,27 +389,38 @@ def errorInsert(errorList):
             logger.error(e)
             noSendingErrorToMail = errorListMail
         else:
-            noSendingErrorToMail = {}
             logger.info("End sending error information to email")
 
     logger.info("End sending error information")
 
 
-def ping(ip):
+def pingOne(ip):
     rez = subprocess.run(
         ["ping", "-c", "1", "-t", "1", ip], stdout=subprocess.DEVNULL
     ).returncode
     if rez == 0:
         return True
     else:
+        return False
+
+
+def ping(ip):
+    if pingOne(ip):
+        return True
+    else:
         time.sleep(0.2)
-        rez = subprocess.run(
-            ["ping", "-c", "3", "-t", "1", ip], stdout=subprocess.DEVNULL
-        ).returncode
-        if rez == 0:
+        if pingOne(ip):
             return True
         else:
-            return False
+            time.sleep(0.2)
+            if pingOne(ip):
+                return True
+            else:
+                time.sleep(0.2)
+                if pingOne(ip):
+                    return True
+                else:
+                    return False
 
 
 def pingList(switches, mibsList):
@@ -461,6 +491,9 @@ def runningCheck(switches, mibsList, lassErrorsPort, errorTemp):
         except Exception as e:
             logger.error("Error sending statistics by ports to the database")
             logger.error(e)
+            huta = database()
+            huta.addPortStat(portStat)
+            huta.updateLastPortError(lastValuePortError)
         else:
             logger.info("End sending statistics to the database by ports")
 
@@ -475,6 +508,8 @@ def runningCheck(switches, mibsList, lassErrorsPort, errorTemp):
     except Exception as e:
         logger.error("Error sending statistics by processor to the database")
         logger.error(e)
+        huta = database()
+        huta.addProcStat(procStat)
     else:
         logger.info("End sending statistics to the database by processor")
 
@@ -489,6 +524,8 @@ def runningCheck(switches, mibsList, lassErrorsPort, errorTemp):
     except Exception as e:
         logger.error("Error sending statistics by temperature to the database")
         logger.error(e)
+        huta = database()
+        huta.addTempStat(tempStat)
     else:
         logger.info("End sending statistics to the database by temperature")
 
@@ -505,6 +542,8 @@ def runningCheck(switches, mibsList, lassErrorsPort, errorTemp):
         except Exception as e:
             logger.error("Error deleting errors from the database")
             logger.error(e)
+            huta = database()
+            huta.deleteError(deleteMass)
         else:
             logger.info("End deleting errors from the database")
 
@@ -531,7 +570,10 @@ def fiveMinutesMain():
     except Exception as e:
         logger.error("Error getting data from the database")
         logger.error(e)
-        return
+        huta = database()
+        switches = huta.getSwitches()
+        mibsList = huta.getMibs()
+        lassErrorsPort = huta.getPortError()
     else:
         logger.info("Successful of getting data from the database")
 
@@ -566,7 +608,10 @@ def twoMinutesMain():
         except Exception as e:
             logger.error("Error getting data from the database")
             logger.error(e)
-            return
+            huta = database()
+            switches = huta.getSwitches()
+            mibsList = huta.getMibs()
+            lassErrorsPort = huta.getPortError()
         else:
             logger.info("Successful of getting data from the database")
 
@@ -604,7 +649,10 @@ def oneMinutesMain():
         except Exception as e:
             logger.error("Error getting data from the database")
             logger.error(e)
-            return
+            huta = database()
+            switches = huta.getSwitches()
+            mibsList = huta.getMibs()
+            lassErrorsPort = huta.getPortError()
         else:
             logger.info("Successful of getting data from the database")
 
@@ -636,6 +684,9 @@ def startProgramm():
     except Exception as e:
         logger.error("Initial data acquisition error")
         logger.error(e)
+        huta = database()
+        oneError = huta.getDeviceError()
+        typeErrorList = huta.getTypeError()
     else:
         logger.info("Successful of receiving initial data")
 
@@ -650,4 +701,7 @@ if __name__ == "__main__":
     oneMinutesMain()
     while True:
         schedule.run_pending()
+        if os.path.isfile("/usr/home/ferrostol/rebootFile.txt"):
+            os.rename("/usr/home/ferrostol/rebootFile.txt", "endReboot.txt")
+            exit()
         time.sleep(1)

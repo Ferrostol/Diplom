@@ -1,9 +1,17 @@
+#!/usr/local/bin/python3
 import string
 import datetime
 import psycopg2
 import sys
 import os
-from prettytable import PrettyTable
+from tabulate import tabulate
+
+databaseConf = {
+    "dbname": "databasename",
+    "user": "user",
+    "password": "password",
+    "host": "localhost",
+}
 
 
 class database:
@@ -116,63 +124,76 @@ class database:
         self.connect.commit()
         cursor.close()
 
+    def exec(self, sql):
+        cursor = self.connect.cursor()
+        cursor.execute(sql)
+        self.connect.commit()
+        cursor.close()
+
+    def onOffSwitches(self, id, value):
+        sql = f"update switches set status = {value} where id = {id}"
+        cursor = self.connect.cursor()
+        cursor.execute(sql)
+        self.connect.commit()
+        cursor.close()
+
 
 def helpInfo(argum):
     text = f"""
 USAGE: ./{os.path.basename(__file__)} [OPTIONS]
 OPTIONS:
     -h                  display this help message
-
 Working with database:
     -a                  select all table in database
+                        Example:
+                            ./{os.path.basename(__file__)} -a
     -d TABLE_NAME       output of records from the table
-
                         Additional parameters:
                         -sr COLUMN              sorts rows by the selected column
-
                         Example:
-                            {os.path.basename(__file__)} -d switches -c id -c model_id
-
+                            ./{os.path.basename(__file__)} -d switches -c id -c model_id
                         -srd COLUMN             sorts rows by the selected column in reverse order
-
                         Example:
-                            {os.path.basename(__file__)} -d switches -cd id
-
+                            ./{os.path.basename(__file__)} -d switches -cd id
     -s TABLE_NAME       output of information about the table
+                        Example:
+                            ./{os.path.basename(__file__)} -s switches
+    -swt                add new switches
+                        Example:
+                            ./{os.path.basename(__file__)} -swt
+    -on ID_SWITCHES     on status switches
+                        Example:
+                            ./{os.path.basename(__file__)} -on 15
+    -off ID_SWITCHES    off status switches
+                        Example:
+                            ./{os.path.basename(__file__)} -off 15
     -i TABLE_NAME       adding new data in database
+                        Example:
+                            ./{os.path.basename(__file__)} -i switches
     -r TABLE_NAME       deleting data from the database
-                        
                         Required parameters:
                         -k PR_KEY               The key by which it is deleted
                         -v VALUE_PR_KEY         Key value
                         If there are several keys then enter one at a time:
-                        
                         Example:
                             Delete CPU statistics for 4 switches in 2022-05-09 19:01:27.126789:
-                            {os.path.basename(__file__)} -d statcpu -k switches_id -v 4 -k datevrem '2022-05-09 19:01:27.126789'
+                            ./{os.path.basename(__file__)} -d statcpu -k switches_id -v 4 -k datevrem '2022-05-09 19:01:27.126789'
                             Delete CPU statistics for 4 switches:
-                            {os.path.basename(__file__)} -d statcpu -k switches_id -v 4
-
+                            ./{os.path.basename(__file__)} -d statcpu -k switches_id -v 4
     -u TABLE_NAME       сhanging the data in the database 
-
                         Required parameters:
                         -k PR_KEY               The key by which it is сhanging
                         -v VALUE_PR_KEY         Key value
-
                         If there are several keys then enter one at a time:
-
                         Example:
                             Edit the CPU statistics entry for 4 switches in 2022-05-09 19:01:27.126789:
-                            {os.path.basename(__file__)} -u statcpu -k switches_id -v 4 -k datevrem '2022-05-09 19:01:27.126789'    
+                            ./{os.path.basename(__file__)} -u statcpu -k switches_id -v 4 -k datevrem '2022-05-09 19:01:27.126789'    
     """
     print(text)
 
 
 def printTable(columns, rows):
-    table = PrettyTable()
-    table.field_names = columns
-    table.add_rows(rows)
-    print(table)
+    print(tabulate(rows, headers=columns, tablefmt="grid"))
 
 
 def allTable(argum):
@@ -221,6 +242,8 @@ def infoTable(argum):
 def checkType(column, inp):
     if column[3] == "NO" and str(inp).strip() == "" and column[1] == "":
         return False
+    if str(inp).strip() == "" and column[1] != "":
+        return True
     if str(column[2]).lower() in ("integer"):
         return str(inp).isdigit()
     if str(column[2]).lower() in ("numeric"):
@@ -241,6 +264,8 @@ def checkType(column, inp):
 
 
 def correctValue(column, inp):
+    if str(inp).strip() == "" and column[1] != "":
+        inp = column[1]
     if str(column[2]).lower() in (
         "character varying",
         "text",
@@ -259,22 +284,7 @@ def addData(argum):
     except Exception as e:
         print(e)
         exit()
-    value = {}
-    search = "nextval("
-    for column in rows:
-        inp = input(
-            f"{column[0]} field"
-            + f"{'' if column[1] in (None, '') else f'(Default: {column[1]})' if str(column[1]).find(search) == -1 else '(Default:AUTO GENERATE)'}."
-            + f" is_nullable({column[3]}){' Format ' if str(column[2]).lower() == 'timestamp without time zone' else ''}:"
-        )
-        while not checkType(column, inp):
-            inp = input(
-                f"Error input. {column[0]} field"
-                + f"{'' if column[1] in (None, '') else f'(Default: {column[1]})' if str(column[1]).find(search) == -1 else '(Default:AUTO GENERATE)'}."
-                + f" is_nullable({column[3]}){' Format ' if str(column[2]).lower() == 'timestamp without time zone' else ''}:"
-            )
-        inp = correctValue(column, inp)
-        value[column[0]] = inp
+    value = editData(rows, {})
     assent = input("Confirm adding the entry[y/n]:").lower()
     if assent in ("y", "yes"):
         try:
@@ -345,21 +355,19 @@ def editData(columns, current):
         inp = input(
             f"{column[0]} field"
             + f"{'' if column[1] in (None, '') else f'(Default: {column[1]})' if str(column[1]).find(search) == -1 else '(Default:AUTO GENERATE)'}."
-            + f" is_nullable({column[3]}).{' Format ' if str(column[2]).lower() == 'timestamp without time zone' else ''} Current[{current[column[0]]}]:"
+            + f" is_nullable({column[3]}).{' Format ' if str(column[2]).lower() == 'timestamp without time zone' else ''}"
+            + f" {f'Current[{current[column[0]]}]' if current != {} else ''}:"
         )
         while not checkType(column, inp):
             inp = input(
                 f"Error input. {column[0]} field"
                 + f"{'' if column[1] in (None, '') else f'(Default: {column[1]})' if str(column[1]).find(search) == -1 else '(Default:AUTO GENERATE)'}."
-                + f" is_nullable({column[3]}).{' Format ' if str(column[2]).lower() == 'timestamp without time zone' else ''} Current[{current[column[0]]}]:"
+                + f" is_nullable({column[3]}).{' Format ' if str(column[2]).lower() == 'timestamp without time zone' else ''}"
+                + f" {f'Current[{current[column[0]]}]' if current != {} else ''}:"
             )
         inp = correctValue(column, inp)
         value[column[0]] = inp
-    assent = input("Confirm adding the entry[y/n]:").lower()
-    if assent in ("y", "yes"):
-        return value
-    else:
-        return {}
+    return value
 
 
 def updateData(argum):
@@ -404,7 +412,8 @@ def updateData(argum):
             print("The condition you set returned more than one row from the table")
             exit()
         newData = editData(database().getInfoOfTable(argum[0])[1], rowObj[0])
-        if newData != {}:
+        assent = input("Confirm adding the entry[y/n]:").lower()
+        if assent in ("y", "yes"):
             try:
                 database().update(argum[0], wheres, newData)
             except Exception as e:
@@ -417,6 +426,70 @@ def updateData(argum):
         exit()
 
 
+def addSwitches(argum):
+    if len(argum):
+        helpInfo([])
+        return
+    try:
+        columnsSwitch = database().getInfoOfTable("switches")[1][1:]
+        columnsMibs = database().getInfoOfTable("mibslist")[1][1:]
+    except Exception as e:
+        print(e)
+        exit()
+    value = editData(columnsSwitch, {})
+    mibs = editData(columnsMibs, {})
+    assent = input("Confirm adding the entry[y/n]:").lower()
+    if assent in ("y", "yes"):
+        sql = (
+            f"insert into switches ("
+            + ",".join(value.keys())
+            + ") values ("
+            + ",".join([f"{value[key]}" for key in value])
+            + ");"
+            + f"insert into mibsList (switches_id, "
+            + ",".join(mibs.keys())
+            + f") values ((select id from switches where ip = {value['ip']}),"
+            + ",".join([f"{mibs[key]}" for key in mibs])
+            + ");"
+        )
+        try:
+            database().exec(sql)
+        except Exception as e:
+            print(e)
+            exit()
+        else:
+            print("Entry added")
+            exit()
+
+
+def onSwitches(argum):
+    if len(argum) != 1 or not str(argum[0]).isdigit():
+        helpInfo([])
+        return
+    try:
+        database().onOffSwitches(argum[0], "true")
+    except Exception as e:
+        print(e)
+        exit()
+    else:
+        print("Switches on")
+        exit()
+
+
+def offSwitches(argum):
+    if len(argum) != 1 or not str(argum[0]).isdigit():
+        helpInfo([])
+        return
+    try:
+        database().onOffSwitches(argum[0], "false")
+    except Exception as e:
+        print(e)
+        exit()
+    else:
+        print("Switches off")
+        exit()
+
+
 flagsList = {
     "-h": helpInfo,
     "-a": allTable,
@@ -425,11 +498,14 @@ flagsList = {
     "-i": addData,
     "-r": deleteData,
     "-u": updateData,
+    "-swt": addSwitches,
+    "-on": onSwitches,
+    "-off": offSwitches,
 }
 
 if __name__ == "__main__":
     argum = sys.argv[1:]
-    if argum[0] not in flagsList:
-        helpInfo()
+    if not len(argum) or argum[0] not in flagsList:
+        helpInfo([])
     else:
         flagsList[argum[0]](argum[1:])
